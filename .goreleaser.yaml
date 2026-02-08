@@ -8,7 +8,7 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
+      - -X main.version={{ .Tag }}
       - -X main.commit={{ .ShortCommit }}
     goos:
       - linux
@@ -34,7 +34,7 @@ kos:
 
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
+      - -X main.version={{ .Tag }}
       - -X main.commit={{ .ShortCommit }}
 
     platforms:
