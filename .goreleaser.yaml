@@ -1,0 +1,58 @@
+version: 2
+
+builds:
+  -
+    main: cmd/main.go
+    binary: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    no_unique_dist_dir: true
+
+archives:
+  -
+    id: tar
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.tar.gz"
+
+checksum:
+  name_template: "{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+kos:
+  -
+    main: ./cmd
+    working_dir: .
+
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+    tags:
+      - '{{ .Tag }}'
+      - '{{ if not .Prerelease }}latest{{ end }}'
+
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.name: "{{ .ProjectName }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+
+    sbom: none
+
+    bare: true
+
+gomod:
+  proxy: false
+
+release:
+  draft: false
