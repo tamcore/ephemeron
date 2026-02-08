@@ -60,7 +60,7 @@ services:
         condition: service_healthy
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.4-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
