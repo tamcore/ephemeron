@@ -12,7 +12,7 @@ func TestValidate(t *testing.T) {
 			RedisURL:     "redis://localhost:6379",
 			HookToken:    "secret",
 			RegistryURL:  "http://localhost:5000",
-			Hostname:     "reg.meh.wf",
+			Hostname:     "localhost",
 			DefaultTTL:   time.Hour,
 			MaxTTL:       24 * time.Hour,
 			ReapInterval: time.Minute,

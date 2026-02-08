@@ -47,7 +47,7 @@ func newConfig() *config.Config {
 		RedisURL:     envStr("REDIS_URL", envStr("REDISCLOUD_URL", "redis://localhost:6379")),
 		HookToken:    envStr("HOOK_TOKEN", ""),
 		RegistryURL:  envStr("REGISTRY_URL", "http://localhost:5000"),
-		Hostname:     envStr("HOSTNAME_OVERRIDE", "reg.meh.wf"),
+		Hostname:     envStr("HOSTNAME_OVERRIDE", "localhost"),
 		DefaultTTL:   envDuration("DEFAULT_TTL", time.Hour),
 		MaxTTL:       envDuration("MAX_TTL", 24*time.Hour),
 		ReapInterval: envDuration("REAP_INTERVAL", time.Minute),
