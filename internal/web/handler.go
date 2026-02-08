@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -63,12 +64,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatDuration(d time.Duration) string {
-	if d >= 24*time.Hour {
+	switch {
+	case d >= 24*time.Hour && d%(24*time.Hour) == 0:
 		days := int(d / (24 * time.Hour))
 		if days == 1 {
 			return "1 day"
 		}
-		return ""
+		return fmt.Sprintf("%d days", days)
+	case d >= time.Hour && d%time.Hour == 0:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d >= time.Minute && d%time.Minute == 0:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return d.String()
 	}
-	return d.String()
 }

@@ -27,7 +27,7 @@ func TestHandler_ServesPage(t *testing.T) {
 	if !strings.Contains(body, "reg.test.dev") {
 		t.Error("expected hostname to appear in rendered page")
 	}
-	if !strings.Contains(body, "1h0m0s") {
+	if !strings.Contains(body, "1h") {
 		t.Error("expected default TTL to appear in rendered page")
 	}
 
@@ -42,9 +42,12 @@ func TestFormatDuration(t *testing.T) {
 		d    time.Duration
 		want string
 	}{
-		{time.Hour, "1h0m0s"},
+		{time.Hour, "1h"},
+		{2 * time.Hour, "2h"},
+		{30 * time.Minute, "30m"},
 		{24 * time.Hour, "1 day"},
-		{48 * time.Hour, ""},
+		{48 * time.Hour, "2 days"},
+		{90 * time.Minute, "90m"},
 	}
 	for _, tt := range tests {
 		got := formatDuration(tt.d)
