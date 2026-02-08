@@ -1,6 +1,10 @@
 # Ephemeron
 
-Ephemeron is a self-hosted ephemeral container registry manager. It automatically deletes expired container images based on TTL (time-to-live) values encoded in image tags.
+[![CI](https://github.com/tamcore/ephemeron/actions/workflows/ci.yaml/badge.svg)](https://github.com/tamcore/ephemeron/actions/workflows/ci.yaml)
+[![Release](https://github.com/tamcore/ephemeron/actions/workflows/release.yaml/badge.svg)](https://github.com/tamcore/ephemeron/actions/workflows/release.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/tamcore/ephemeron)](https://goreportcard.com/report/github.com/tamcore/ephemeron)
+
+**Ephemeron** (from Greek *ephḗmeron* — ἐφήμερον, "lasting only a day") is a self-hosted ephemeral container registry manager. It automatically deletes expired container images based on TTL (time-to-live) values encoded in image tags.
 
 Tag your images with durations like `myimage:5m`, `myimage:1h`, or `myimage:1d` — Ephemeron tracks them and reaps them when they expire.
 
