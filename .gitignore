@@ -1,0 +1,6 @@
+bin/
+dist/
+cover.out
+*.exe
+deploy/helm/charts/
+deploy/helm/Chart.lock
