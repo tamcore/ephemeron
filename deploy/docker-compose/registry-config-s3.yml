@@ -11,6 +11,7 @@ storage:
     accesskey: minioadmin
     secretkey: minioadmin
     regionendpoint: http://minio:9000
+    forcepathstyle: true
   redirect:
     disable: true
   cache:

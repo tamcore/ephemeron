@@ -85,6 +85,8 @@ registry:
       secretKey: ""
       # -- S3 endpoint URL (required for non-AWS S3, e.g. https://s3.eu-central-3.ionoscloud.com)
       # endpoint: ""
+      # -- Force path-style S3 URLs (required for MinIO / non-AWS S3 providers)
+      forcePathStyle: false
       # -- Enable S3 storage redirects (clients download blobs directly from S3 via presigned URLs).
       redirect: true
 
