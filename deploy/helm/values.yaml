@@ -34,7 +34,7 @@ registry:
     # -- Container image repository for the registry
     repository: registry
     # -- Image tag
-    tag: "2"
+    tag: "3"
   # -- HMAC secret used to sign blob upload session tokens.
   # Must be identical across all replicas. Use a long random string (e.g. 64 hex chars).
   # If left empty, each pod generates its own random secret, breaking multi-replica setups.
