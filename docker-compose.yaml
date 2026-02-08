@@ -11,7 +11,7 @@ services:
         condition: service_healthy
 
   manager:
-    image: ${MANAGER_IMAGE:-ko.local/reg-meh-wf:latest}
+    image: ${MANAGER_IMAGE:-ko.local/ephemeron:latest}
     command: ["serve"]
     environment:
       REDIS_URL: redis://redis:6379

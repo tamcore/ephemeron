@@ -2,7 +2,7 @@
 manager:
   image:
     # -- Container image repository
-    repository: ghcr.io/tamcore/reg-meh-wf
+    repository: ghcr.io/tamcore/ephemeron
     # -- Image tag (defaults to Chart.appVersion)
     tag: ""
     # -- Image digest (overrides tag when set, e.g. sha256:abc123...)

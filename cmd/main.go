@@ -13,11 +13,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 
-	"github.com/tamcore/reg.meh.wf/internal/config"
-	"github.com/tamcore/reg.meh.wf/internal/hooks"
-	"github.com/tamcore/reg.meh.wf/internal/reaper"
-	redisclient "github.com/tamcore/reg.meh.wf/internal/redis"
-	"github.com/tamcore/reg.meh.wf/internal/web"
+	"github.com/tamcore/ephemeron/internal/config"
+	"github.com/tamcore/ephemeron/internal/hooks"
+	"github.com/tamcore/ephemeron/internal/reaper"
+	redisclient "github.com/tamcore/ephemeron/internal/redis"
+	"github.com/tamcore/ephemeron/internal/web"
 )
 
 var (
@@ -27,7 +27,7 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "reg-meh-wf",
+		Use:   "ephemeron",
 		Short: "Ephemeral container registry manager",
 	}
 
@@ -193,7 +193,7 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("reg-meh-wf %s (commit: %s)\n", version, commit)
+			fmt.Printf("ephemeron %s (commit: %s)\n", version, commit)
 		},
 	}
 }

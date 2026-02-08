@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	redisclient "github.com/tamcore/reg.meh.wf/internal/redis"
+	redisclient "github.com/tamcore/ephemeron/internal/redis"
 
-	"github.com/tamcore/reg.meh.wf/internal/metrics"
+	"github.com/tamcore/ephemeron/internal/metrics"
 )
 
 // RegistryEvent represents a single event from the Docker Registry webhook.

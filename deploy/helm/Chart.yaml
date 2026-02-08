@@ -1,6 +1,6 @@
 ---
 apiVersion: v2
-name: reg-meh-wf
+name: ephemeron
 description: Self-hosted ephemeral container registry
 type: application
 version: 0.0.1

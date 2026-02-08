@@ -81,8 +81,8 @@ jobs:
           # Give webhook a moment to process
           sleep 2
           METRICS=$(curl -sf http://localhost:9090/metrics)
-          echo "$METRICS" | grep -q 'regmehwf_hooks_images_tracked_total'
-          TRACKED=$(echo "$METRICS" | grep '^regmehwf_hooks_images_tracked_total' | awk '{print $2}')
+          echo "$METRICS" | grep -q 'ephemeron_hooks_images_tracked_total'
+          TRACKED=$(echo "$METRICS" | grep '^ephemeron_hooks_images_tracked_total' | awk '{print $2}')
           if [ "$TRACKED" -lt 1 ]; then
             echo "❌ Expected at least 1 tracked image, got $TRACKED"
             exit 1

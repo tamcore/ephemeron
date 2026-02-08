@@ -1,4 +1,4 @@
-IMG ?= reg-meh-wf
+IMG ?= ephemeron
 IMG_REGISTRY ?= ttl.sh
 IMG_TAG ?= dev
 
@@ -47,7 +47,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: build
 build: fmt vet ## Build binary.
-	go build -o bin/reg-meh-wf cmd/main.go
+	go build -o bin/ephemeron cmd/main.go
 
 .PHONY: run
 run: fmt vet ## Run from source.

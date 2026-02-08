@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tamcore/reg.meh.wf/internal/metrics"
-	redisclient "github.com/tamcore/reg.meh.wf/internal/redis"
+	"github.com/tamcore/ephemeron/internal/metrics"
+	redisclient "github.com/tamcore/ephemeron/internal/redis"
 )
 
 // Reaper periodically checks for and deletes expired images.

@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 env:
-  REPOSITORY: ghcr.io/${{ github.repository_owner }}/reg-meh-wf
+  REPOSITORY: ghcr.io/${{ github.repository_owner }}/ephemeron
   CHART_DIR: deploy/helm
   CHART_REPOSITORY: ghcr.io/${{ github.repository_owner }}/charts
 

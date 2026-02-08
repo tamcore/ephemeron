@@ -8,7 +8,7 @@ import (
 var (
 	// WebhookEventsTotal counts registry webhook events received.
 	WebhookEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "hooks",
 		Name:      "webhook_events_total",
 		Help:      "Total number of registry webhook events received.",
@@ -16,7 +16,7 @@ var (
 
 	// ImagesTracked counts images added to TTL tracking.
 	ImagesTracked = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "hooks",
 		Name:      "images_tracked_total",
 		Help:      "Total number of images added to TTL tracking.",
@@ -24,7 +24,7 @@ var (
 
 	// ImagesReaped counts images deleted by the reaper.
 	ImagesReaped = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "reaper",
 		Name:      "images_reaped_total",
 		Help:      "Total number of expired images deleted.",
@@ -32,7 +32,7 @@ var (
 
 	// ReaperCycleDuration observes the duration of each reap cycle.
 	ReaperCycleDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "reaper",
 		Name:      "cycle_duration_seconds",
 		Help:      "Duration of each reaper cycle in seconds.",
@@ -41,7 +41,7 @@ var (
 
 	// ReaperCycleErrors counts failed reap cycles.
 	ReaperCycleErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "reaper",
 		Name:      "cycle_errors_total",
 		Help:      "Total number of failed reaper cycles.",
@@ -49,7 +49,7 @@ var (
 
 	// TrackedImagesGauge shows the current number of tracked images.
 	TrackedImagesGauge = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "regmehwf",
+		Namespace: "ephemeron",
 		Subsystem: "reaper",
 		Name:      "tracked_images",
 		Help:      "Current number of images being tracked for expiry.",
