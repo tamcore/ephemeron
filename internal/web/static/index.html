@@ -409,35 +409,34 @@
             Powered by <a href="https://github.com/tamcore/ephemeron">ephemeron</a>
         </footer>
     </div>
-    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">🌙</button>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">🌓</button>
     <script>
         (function() {
             var toggle = document.getElementById('theme-toggle');
             var root = document.documentElement;
+            var icons = { auto: '🌓', light: '☀️', dark: '🌙' };
 
-            function getEffective(pref) {
-                if (pref === 'light') return 'light';
-                if (pref === 'dark') return 'dark';
-                return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-            }
-
-            function apply(theme) {
-                if (theme === 'light') {
-                    root.setAttribute('data-theme', 'light');
-                    toggle.textContent = '☀️';
+            function apply(pref) {
+                if (pref === 'light' || pref === 'dark') {
+                    root.setAttribute('data-theme', pref);
                 } else {
-                    root.setAttribute('data-theme', 'dark');
-                    toggle.textContent = '🌙';
+                    root.removeAttribute('data-theme');
                 }
+                toggle.textContent = icons[pref] || icons.auto;
             }
 
             var stored = localStorage.getItem('theme');
-            apply(getEffective(stored));
+            apply(stored || 'auto');
 
             toggle.addEventListener('click', function() {
-                var current = root.getAttribute('data-theme');
-                var next = current === 'dark' ? 'light' : 'dark';
-                localStorage.setItem('theme', next);
+                var cycle = { auto: 'light', light: 'dark', dark: 'auto' };
+                var current = localStorage.getItem('theme') || 'auto';
+                var next = cycle[current] || 'auto';
+                if (next === 'auto') {
+                    localStorage.removeItem('theme');
+                } else {
+                    localStorage.setItem('theme', next);
+                }
                 apply(next);
             });
         })();
