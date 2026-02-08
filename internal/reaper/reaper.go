@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tamcore/reg.meh.wf/internal/metrics"
 	redisclient "github.com/tamcore/reg.meh.wf/internal/redis"
 )
 
@@ -51,14 +52,32 @@ func (r *Reaper) RunLoop(ctx context.Context, interval time.Duration) {
 }
 
 // ReapOnce performs a single reap pass — checking all tracked images and
-// deleting those that have expired.
+// deleting those that have expired. Uses a Redis lock to ensure only one
+// replica runs the reaper at a time.
 func (r *Reaper) ReapOnce(ctx context.Context) error {
+	acquired, err := r.redis.AcquireReaperLock(ctx, 5*time.Minute)
+	if err != nil {
+		return fmt.Errorf("acquiring reaper lock: %w", err)
+	}
+	if !acquired {
+		r.logger.Debug("another replica holds the reaper lock, skipping")
+		return nil
+	}
+	defer func() { _ = r.redis.ReleaseReaperLock(ctx) }()
+
+	start := time.Now()
+	defer func() {
+		metrics.ReaperCycleDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	images, err := r.redis.ListImages(ctx)
 	if err != nil {
+		metrics.ReaperCycleErrors.Inc()
 		return fmt.Errorf("listing images: %w", err)
 	}
 
 	r.logger.Info("reap cycle starting", "total_images", len(images))
+	metrics.TrackedImagesGauge.Set(float64(len(images)))
 
 	now := time.Now().UnixMilli()
 
@@ -76,7 +95,10 @@ func (r *Reaper) ReapOnce(ctx context.Context) error {
 
 		if expiresAt > now {
 			remaining := time.Duration(expiresAt-now) * time.Millisecond
-			r.logger.Debug("image not expired yet", "image", image, "remaining", remaining.Round(time.Second).String())
+			r.logger.Debug("image not expired yet",
+				"image", image,
+				"remaining", remaining.Round(time.Second).String(),
+			)
 			continue
 		}
 
@@ -85,6 +107,7 @@ func (r *Reaper) ReapOnce(ctx context.Context) error {
 			continue
 		}
 
+		metrics.ImagesReaped.Inc()
 		r.logger.Info("reaped expired image", "image", image)
 	}
 

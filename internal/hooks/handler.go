@@ -9,6 +9,8 @@ import (
 	"time"
 
 	redisclient "github.com/tamcore/reg.meh.wf/internal/redis"
+
+	"github.com/tamcore/reg.meh.wf/internal/metrics"
 )
 
 // RegistryEvent represents a single event from the Docker Registry webhook.
@@ -77,6 +79,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	for _, event := range envelope.Events {
+		metrics.WebhookEventsTotal.WithLabelValues(event.Action).Inc()
+
 		if event.Action != "push" {
 			continue
 		}
@@ -108,5 +112,10 @@ func (h *Handler) handlePush(ctx context.Context, repo, tag string) error {
 		"expires_at", expiresAt.Format(time.RFC3339),
 	)
 
-	return h.redis.TrackImage(ctx, imageWithTag, expiresAt)
+	if err := h.redis.TrackImage(ctx, imageWithTag, expiresAt); err != nil {
+		return err
+	}
+
+	metrics.ImagesTracked.Inc()
+	return nil
 }

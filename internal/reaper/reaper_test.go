@@ -45,6 +45,12 @@ func (m *mockStore) RemoveImage(_ context.Context, imageWithTag string) error {
 	return nil
 }
 
+func (m *mockStore) AcquireReaperLock(context.Context, time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (m *mockStore) ReleaseReaperLock(context.Context) error { return nil }
+
 func TestDeleteImage_404FromRegistry(t *testing.T) {
 	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
