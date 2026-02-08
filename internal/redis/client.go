@@ -9,7 +9,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const imagesKey = "current.images"
+const (
+	imagesKey     = "current.images"
+	reaperLockKey = "reaper.lock"
+)
 
 // Client wraps the Redis client with ttl.sh-compatible operations.
 type Client struct {
@@ -69,4 +72,15 @@ func (c *Client) RemoveImage(ctx context.Context, imageWithTag string) error {
 	pipe.Del(ctx, imageWithTag)
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+// AcquireReaperLock attempts to acquire a distributed lock for the reaper.
+// Returns true if the lock was acquired. The lock auto-expires after the given TTL.
+func (c *Client) AcquireReaperLock(ctx context.Context, ttl time.Duration) (bool, error) {
+	return c.rdb.SetNX(ctx, reaperLockKey, "locked", ttl).Result()
+}
+
+// ReleaseReaperLock releases the distributed reaper lock.
+func (c *Client) ReleaseReaperLock(ctx context.Context) error {
+	return c.rdb.Del(ctx, reaperLockKey).Err()
 }

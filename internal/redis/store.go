@@ -13,4 +13,6 @@ type Store interface {
 	ListImages(ctx context.Context) ([]string, error)
 	GetExpiry(ctx context.Context, imageWithTag string) (int64, error)
 	RemoveImage(ctx context.Context, imageWithTag string) error
+	AcquireReaperLock(ctx context.Context, ttl time.Duration) (bool, error)
+	ReleaseReaperLock(ctx context.Context) error
 }
