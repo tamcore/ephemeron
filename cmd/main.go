@@ -28,7 +28,7 @@ var (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "reg-meh-wf",
-		Short: "Ephemeral container registry sidecar",
+		Short: "Ephemeral container registry manager",
 	}
 
 	rootCmd.AddCommand(serveCmd())

@@ -2,20 +2,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-sidecar
+  name: {{ .Release.Name }}-manager
 spec:
-  replicas: {{ .Values.sidecar.replicas }}
+  replicas: {{ .Values.manager.replicas }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-sidecar
+      app: {{ .Release.Name }}-manager
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-sidecar
+        app: {{ .Release.Name }}-manager
     spec:
       containers:
-        - name: sidecar
-          image: {{ .Values.sidecar.image.repository }}:{{ coalesce .Values.sidecar.image.tag .Chart.AppVersion }}
+        - name: manager
+          image: {{ .Values.manager.image.repository }}{{ if .Values.manager.image.digest }}@{{ .Values.manager.image.digest }}{{ else }}:{{ coalesce .Values.manager.image.tag .Chart.AppVersion }}{{ end }}
           args: ["serve"]
           env:
             - name: REDIS_URL
@@ -29,13 +29,13 @@ spec:
             - name: HOSTNAME_OVERRIDE
               value: {{ .Values.ingress.host }}
             - name: DEFAULT_TTL
-              value: {{ .Values.sidecar.env.defaultTTL | default "1h" | quote }}
+              value: {{ .Values.manager.env.defaultTTL | default "1h" | quote }}
             - name: MAX_TTL
-              value: {{ .Values.sidecar.env.maxTTL | default "24h" | quote }}
+              value: {{ .Values.manager.env.maxTTL | default "24h" | quote }}
             - name: REAP_INTERVAL
-              value: {{ .Values.sidecar.env.reapInterval | default "1m" | quote }}
+              value: {{ .Values.manager.env.reapInterval | default "1m" | quote }}
             - name: LOG_FORMAT
-              value: {{ .Values.sidecar.env.logFormat | default "json" | quote }}
+              value: {{ .Values.manager.env.logFormat | default "json" | quote }}
           ports:
             - containerPort: 8000
               name: http

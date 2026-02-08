@@ -1,11 +1,13 @@
-# -- Sidecar service (hooks + reaper + landing page in one Go binary)
-sidecar:
+# -- Manager service (hooks + reaper + landing page in one Go binary)
+manager:
   image:
     # -- Container image repository
     repository: ghcr.io/tamcore/reg-meh-wf
     # -- Image tag (defaults to Chart.appVersion)
     tag: ""
-  # -- Number of sidecar replicas
+    # -- Image digest (overrides tag when set, e.g. sha256:abc123...)
+    digest: ""
+  # -- Number of manager replicas
   replicas: 1
   env:
     # -- Default TTL for images without a parseable duration tag
@@ -16,6 +18,10 @@ sidecar:
     reapInterval: "1m"
     # -- Log format: "json" or "text"
     logFormat: "json"
+  metrics:
+    serviceMonitor:
+      # -- Create a ServiceMonitor resource for the manager
+      enabled: false
 
 # -- OCI/Docker registry (distribution/distribution)
 registry:
@@ -29,7 +35,7 @@ registry:
   # If left empty, each pod generates its own random secret, breaking multi-replica setups.
   # Generate with: openssl rand -hex 32
   secret: ""
-  # -- Shared token used to authenticate webhook notifications from the registry to the sidecar.
+  # -- Shared token used to authenticate webhook notifications from the registry to the manager.
   # Must match on both sides. If left empty, a default placeholder is used.
   # Generate with: openssl rand -hex 16
   hookToken: ""
@@ -81,7 +87,7 @@ registry:
 ingress:
   # -- Hostname for the registry
   host: ""
-  # -- Annotations applied to both registry and sidecar ingresses.
+  # -- Annotations applied to both registry and manager ingresses.
   annotations:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod

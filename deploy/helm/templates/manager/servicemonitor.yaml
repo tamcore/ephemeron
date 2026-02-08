@@ -1,0 +1,16 @@
+{{- if .Values.manager.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-manager
+  labels:
+    app: {{ .Release.Name }}-manager
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-manager
+  endpoints:
+    - port: http
+      path: /metrics
+{{- end }}
