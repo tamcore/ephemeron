@@ -32,6 +32,11 @@ kos:
     main: ./cmd
     working_dir: .
 
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+
     platforms:
       - linux/amd64
       - linux/arm64
