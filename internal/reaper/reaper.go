@@ -102,13 +102,29 @@ func (r *Reaper) ReapOnce(ctx context.Context) error {
 			continue
 		}
 
+		// Get image size before deletion for metrics
+		sizeBytes, err := r.redis.GetImageSize(ctx, image)
+		if err != nil {
+			r.logger.Warn("failed to get image size for metrics", "image", image, "error", err)
+			sizeBytes = 0
+		}
+
 		if err := r.deleteImage(ctx, image); err != nil {
 			r.logger.Error("failed to delete image", "image", image, "error", err)
 			continue
 		}
 
+		// Update storage metrics
 		metrics.ImagesReaped.Inc()
-		r.logger.Info("reaped expired image", "image", image)
+		metrics.BytesReclaimed.Add(float64(sizeBytes))
+		metrics.TrackedBytesTotal.Sub(float64(sizeBytes))
+
+		sizeMB := float64(sizeBytes) / (1024 * 1024)
+		r.logger.Info("reaped expired image",
+			"image", image,
+			"size_bytes", sizeBytes,
+			"size_mb", fmt.Sprintf("%.2f", sizeMB),
+		)
 	}
 
 	return nil

@@ -9,9 +9,10 @@ import (
 type Store interface {
 	Ping(ctx context.Context) error
 	Close() error
-	TrackImage(ctx context.Context, imageWithTag string, expiresAt time.Time) error
+	TrackImage(ctx context.Context, imageWithTag string, expiresAt time.Time, sizeBytes int64) error
 	ListImages(ctx context.Context) ([]string, error)
 	GetExpiry(ctx context.Context, imageWithTag string) (int64, error)
+	GetImageSize(ctx context.Context, imageWithTag string) (int64, error)
 	RemoveImage(ctx context.Context, imageWithTag string) error
 	AcquireReaperLock(ctx context.Context, ttl time.Duration) (bool, error)
 	ReleaseReaperLock(ctx context.Context) error

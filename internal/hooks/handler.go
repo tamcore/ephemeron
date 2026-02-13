@@ -30,9 +30,15 @@ type EventEnvelope struct {
 	Events []RegistryEvent `json:"events"`
 }
 
+// registryClient is the subset of registry operations needed by the handler.
+type registryClient interface {
+	GetImageSize(ctx context.Context, repo, tag string) (int64, error)
+}
+
 // Handler handles incoming registry webhook events.
 type Handler struct {
 	redis      redisclient.Store
+	registry   registryClient
 	hookToken  string
 	defaultTTL time.Duration
 	maxTTL     time.Duration
@@ -42,12 +48,14 @@ type Handler struct {
 // NewHandler creates a new webhook handler.
 func NewHandler(
 	redis redisclient.Store,
+	registry registryClient,
 	hookToken string,
 	defaultTTL, maxTTL time.Duration,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		redis:      redis,
+		registry:   registry,
 		hookToken:  hookToken,
 		defaultTTL: defaultTTL,
 		maxTTL:     maxTTL,
@@ -108,16 +116,34 @@ func (h *Handler) handlePush(ctx context.Context, repo, tag string) error {
 	ttl := ClampTTL(ParseTTL(tag), h.defaultTTL, h.maxTTL)
 	expiresAt := time.Now().Add(ttl)
 
+	// Fetch image size from registry (best effort)
+	sizeBytes, err := h.registry.GetImageSize(ctx, repo, tag)
+	if err != nil {
+		h.logger.Warn("failed to fetch image size, tracking with size=0",
+			"image", imageWithTag,
+			"error", err,
+		)
+		sizeBytes = 0
+		metrics.ImageSizeFetchErrors.Inc()
+	}
+
+	sizeMB := float64(sizeBytes) / (1024 * 1024)
+
 	h.logger.Info("tracking image",
 		"image", imageWithTag,
 		"ttl", ttl.String(),
 		"expires_at", expiresAt.Format(time.RFC3339),
+		"size_bytes", sizeBytes,
+		"size_mb", fmt.Sprintf("%.2f", sizeMB),
 	)
 
-	if err := h.redis.TrackImage(ctx, imageWithTag, expiresAt); err != nil {
+	if err := h.redis.TrackImage(ctx, imageWithTag, expiresAt, sizeBytes); err != nil {
 		return err
 	}
 
 	metrics.ImagesTracked.Inc()
+	metrics.TrackedBytesTotal.Add(float64(sizeBytes))
+	metrics.ImageSizeBytes.Observe(float64(sizeBytes))
+
 	return nil
 }

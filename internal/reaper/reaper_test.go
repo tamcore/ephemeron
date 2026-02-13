@@ -12,18 +12,23 @@ import (
 // mockStore is an in-memory implementation of redis.Store for testing.
 type mockStore struct {
 	images  map[string]int64 // imageWithTag -> expiresAt (epoch millis)
+	sizes   map[string]int64 // imageWithTag -> sizeBytes
 	removed []string
 }
 
 func newMockStore() *mockStore {
-	return &mockStore{images: make(map[string]int64)}
+	return &mockStore{
+		images: make(map[string]int64),
+		sizes:  make(map[string]int64),
+	}
 }
 
 func (m *mockStore) Ping(context.Context) error { return nil }
 func (m *mockStore) Close() error               { return nil }
 
-func (m *mockStore) TrackImage(_ context.Context, imageWithTag string, expiresAt time.Time) error {
+func (m *mockStore) TrackImage(_ context.Context, imageWithTag string, expiresAt time.Time, sizeBytes int64) error {
 	m.images[imageWithTag] = expiresAt.UnixMilli()
+	m.sizes[imageWithTag] = sizeBytes
 	return nil
 }
 
@@ -37,6 +42,10 @@ func (m *mockStore) ListImages(context.Context) ([]string, error) {
 
 func (m *mockStore) GetExpiry(_ context.Context, imageWithTag string) (int64, error) {
 	return m.images[imageWithTag], nil
+}
+
+func (m *mockStore) GetImageSize(_ context.Context, imageWithTag string) (int64, error) {
+	return m.sizes[imageWithTag], nil
 }
 
 func (m *mockStore) RemoveImage(_ context.Context, imageWithTag string) error {

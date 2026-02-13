@@ -48,6 +48,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.logger.Info("starting recovery", "repositories", len(repos))
 
 	var recovered int
+	var totalBytes int64
 	for _, repo := range repos {
 		tags, err := r.registry.ListTags(ctx, repo)
 		if err != nil {
@@ -60,17 +61,37 @@ func (r *Runner) Run(ctx context.Context) error {
 			expiresAt := time.Now().Add(ttl)
 			imageWithTag := fmt.Sprintf("%s:%s", repo, tag)
 
-			if err := r.redis.TrackImage(ctx, imageWithTag, expiresAt); err != nil {
+			// Fetch image size (best effort)
+			sizeBytes, err := r.registry.GetImageSize(ctx, repo, tag)
+			if err != nil {
+				r.logger.Warn("failed to fetch image size during recovery",
+					"image", imageWithTag,
+					"error", err,
+				)
+				sizeBytes = 0
+			}
+
+			if err := r.redis.TrackImage(ctx, imageWithTag, expiresAt, sizeBytes); err != nil {
 				r.logger.Error("failed to track image", "image", imageWithTag, "error", err)
 				continue
 			}
 
-			r.logger.Debug("recovered image", "image", imageWithTag, "ttl", ttl.String())
+			r.logger.Debug("recovered image",
+				"image", imageWithTag,
+				"ttl", ttl.String(),
+				"size_bytes", sizeBytes,
+			)
 			recovered++
+			totalBytes += sizeBytes
 		}
 	}
 
-	r.logger.Info("recovery complete", "images_recovered", recovered)
+	totalMB := float64(totalBytes) / (1024 * 1024)
+	r.logger.Info("recovery complete",
+		"images_recovered", recovered,
+		"total_bytes", totalBytes,
+		"total_mb", fmt.Sprintf("%.2f", totalMB),
+	)
 	return nil
 }
 

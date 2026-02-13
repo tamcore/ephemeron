@@ -85,3 +85,83 @@ func TestListRepositories_Pagination(t *testing.T) {
 		t.Fatalf("expected 2 API calls, got %d", callCount)
 	}
 }
+
+func TestGetImageSize_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/myapp/manifests/1h" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		manifest := ManifestV2{
+			SchemaVersion: 2,
+			Config:        ManifestConfig{Size: 1000},
+			Layers: []ManifestLayer{
+				{Size: 5000},
+				{Size: 10000},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(manifest)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	size, err := c.GetImageSize(context.Background(), "myapp", "1h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := int64(1000 + 5000 + 10000)
+	if size != expected {
+		t.Fatalf("expected size %d, got %d", expected, size)
+	}
+}
+
+func TestGetImageSize_EmptyLayers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		manifest := ManifestV2{
+			SchemaVersion: 2,
+			Config:        ManifestConfig{Size: 500},
+			Layers:        []ManifestLayer{},
+		}
+		_ = json.NewEncoder(w).Encode(manifest)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	size, err := c.GetImageSize(context.Background(), "myapp", "empty")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if size != 500 {
+		t.Fatalf("expected size 500, got %d", size)
+	}
+}
+
+func TestGetImageSize_404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	_, err := c.GetImageSize(context.Background(), "myapp", "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for 404, got nil")
+	}
+}
+
+func TestGetImageSize_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	_, err := c.GetImageSize(context.Background(), "myapp", "bad")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}

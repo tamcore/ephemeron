@@ -109,7 +109,7 @@ func serveCmd() *cobra.Command {
 			mux := http.NewServeMux()
 
 			hookHandler := hooks.NewHandler(
-				rdb, cfg.HookToken, cfg.DefaultTTL, cfg.MaxTTL,
+				rdb, reg, cfg.HookToken, cfg.DefaultTTL, cfg.MaxTTL,
 				logger.With("component", "hooks"),
 			)
 			mux.Handle("POST /v1/hook/registry-event", hookHandler)
