@@ -61,17 +61,24 @@ func (r *Runner) Run(ctx context.Context) error {
 			expiresAt := time.Now().Add(ttl)
 			imageWithTag := fmt.Sprintf("%s:%s", repo, tag)
 
-			// Fetch image size (best effort)
-			sizeBytes, err := r.registry.GetImageSize(ctx, repo, tag)
+			// Fetch manifest info - best effort
+			var sizeBytes int64
+			var digest string
+
+			manifestInfo, err := r.registry.GetImageManifestInfo(ctx, repo, tag)
 			if err != nil {
-				r.logger.Warn("failed to fetch image size during recovery",
+				r.logger.Warn("failed to fetch manifest info during recovery",
 					"image", imageWithTag,
 					"error", err,
 				)
 				sizeBytes = 0
+				digest = ""
+			} else {
+				sizeBytes = manifestInfo.SizeBytes
+				digest = manifestInfo.Digest
 			}
 
-			if err := r.redis.TrackImage(ctx, imageWithTag, expiresAt, sizeBytes); err != nil {
+			if err := r.redis.TrackImage(ctx, imageWithTag, expiresAt, sizeBytes, digest); err != nil {
 				r.logger.Error("failed to track image", "image", imageWithTag, "error", err)
 				continue
 			}
@@ -80,6 +87,7 @@ func (r *Runner) Run(ctx context.Context) error {
 				"image", imageWithTag,
 				"ttl", ttl.String(),
 				"size_bytes", sizeBytes,
+				"digest", digest,
 			)
 			recovered++
 			totalBytes += sizeBytes

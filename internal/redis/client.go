@@ -40,13 +40,20 @@ func (c *Client) Close() error {
 }
 
 // TrackImage adds an image to the tracking set and stores its expiry metadata.
-func (c *Client) TrackImage(ctx context.Context, imageWithTag string, expiresAt time.Time, sizeBytes int64) error {
+func (c *Client) TrackImage(
+	ctx context.Context,
+	imageWithTag string,
+	expiresAt time.Time,
+	sizeBytes int64,
+	digest string,
+) error {
 	pipe := c.rdb.Pipeline()
 	pipe.SAdd(ctx, imagesKey, imageWithTag)
 	pipe.HSet(ctx, imageWithTag,
 		"created", strconv.FormatInt(time.Now().UnixMilli(), 10),
 		"expires", strconv.FormatInt(expiresAt.UnixMilli(), 10),
 		"size_bytes", strconv.FormatInt(sizeBytes, 10),
+		"digest", digest,
 	)
 	_, err := pipe.Exec(ctx)
 	return err
@@ -72,6 +79,29 @@ func (c *Client) GetImageSize(ctx context.Context, imageWithTag string) (int64, 
 	val, err := c.rdb.HGet(ctx, imageWithTag, "size_bytes").Result()
 	if err == redis.Nil {
 		// Field doesn't exist (old record without size tracking)
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(val, 10, 64)
+}
+
+// GetImageDigest returns the stored digest for an image.
+// Returns empty string for missing field (backward compatibility).
+func (c *Client) GetImageDigest(ctx context.Context, imageWithTag string) (string, error) {
+	val, err := c.rdb.HGet(ctx, imageWithTag, "digest").Result()
+	if err == redis.Nil {
+		return "", nil // Old record without digest
+	}
+	return val, err
+}
+
+// GetCreatedTimestamp returns the created timestamp (epoch milliseconds).
+// Returns 0 for missing field (backward compatibility).
+func (c *Client) GetCreatedTimestamp(ctx context.Context, imageWithTag string) (int64, error) {
+	val, err := c.rdb.HGet(ctx, imageWithTag, "created").Result()
+	if err == redis.Nil {
 		return 0, nil
 	}
 	if err != nil {

@@ -40,6 +40,10 @@ spec:
               value: {{ .Values.manager.env.reapInterval | default "1m" | quote }}
             - name: LOG_FORMAT
               value: {{ .Values.manager.env.logFormat | default "json" | quote }}
+            {{- if .Values.manager.env.immutableTagPatterns }}
+            - name: IMMUTABLE_TAG_PATTERNS
+              value: {{ .Values.manager.env.immutableTagPatterns | quote }}
+            {{- end }}
           ports:
             - containerPort: 8000
               name: http

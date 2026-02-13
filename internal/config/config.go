@@ -36,6 +36,10 @@ type Config struct {
 
 	// LogFormat controls log output: "json" or "text".
 	LogFormat string
+
+	// ImmutableTagPatterns are glob patterns for tags that cannot be overwritten.
+	// Empty list = observability mode only (default). Example: ["prod-*", "release-*"]
+	ImmutableTagPatterns []string
 }
 
 // Validate checks that all required configuration values are set.

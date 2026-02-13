@@ -349,6 +349,7 @@ All configuration via environment variables:
 | `MAX_TTL` | `24h` | No | Maximum allowed TTL |
 | `REAP_INTERVAL` | `1m` | No | Reaper check frequency |
 | `LOG_FORMAT` | `json` | No | Log format (`json` or `text`) |
+| `IMMUTABLE_TAG_PATTERNS` | - | No | Comma-separated glob patterns for immutable tags |
 
 Validation ensures:
 - Required fields are present
@@ -366,6 +367,9 @@ Prometheus metrics exposed at `GET /metrics` (internal port):
 - `ephemeron_reaper_images_reaped_total` - Total images deleted
 - `ephemeron_reaper_cycle_errors_total` - Total failed reaper cycles
 - `ephemeron_storage_bytes_reclaimed_total` - Total storage reclaimed by deletion
+- `ephemeron_immutability_tag_overwrites_total{repository}` - Total tag overwrites detected
+- `ephemeron_immutability_digest_fetch_errors_total` - Total digest fetch failures
+- `ephemeron_immutability_immutable_tag_violations_total{repository,tag}` - Blocked overwrites (enforcement mode)
 
 #### Gauges
 - `ephemeron_reaper_tracked_images` - Current number of tracked images
@@ -374,6 +378,7 @@ Prometheus metrics exposed at `GET /metrics` (internal port):
 #### Histograms
 - `ephemeron_reaper_cycle_duration_seconds` - Reaper cycle duration
 - `ephemeron_storage_image_size_bytes` - Image size distribution (1MB-10GB buckets)
+- `ephemeron_immutability_overwritten_image_age_seconds` - Age of images when overwritten (1m-30d buckets)
 
 ## HTTP API
 
@@ -730,8 +735,9 @@ readinessProbe:
 ### Potential Improvements
 
 1. **Granular Locking**: Per-image locks to allow parallel deletion
-2. **Tag Immutability**: Detect and warn about tag overwrites
-3. **Shared Layer Deduplication**: Account for shared base layers in size metrics
+2. **Shared Layer Deduplication**: Account for shared base layers in size metrics
+3. **Overwrite History Tracking**: Store digest change history in Redis for audit trail
+4. **Per-Repository Policies**: Different immutability patterns per repository
 
 ### Architectural Constraints
 

@@ -1,0 +1,32 @@
+# Example values file demonstrating tag immutability enforcement
+# Deploy with: helm install ephemeron . -f values-with-immutability.yaml
+
+# Override default values to enable tag immutability enforcement
+manager:
+  env:
+    # Enable enforcement mode: block overwrites for production and release tags
+    # Patterns use glob syntax (https://pkg.go.dev/path/filepath#Match)
+    immutableTagPatterns: "prod-*,release-*,v[0-9]*,stable,latest"
+
+    # Other standard settings
+    defaultTTL: "1h"
+    maxTTL: "24h"
+    reapInterval: "1m"
+    logFormat: "json"
+
+# Configure your registry host
+ingress:
+  host: "registry.example.com"
+
+# Optional: Enable Prometheus ServiceMonitor for immutability metrics
+manager:
+  metrics:
+    serviceMonitor:
+      enabled: true
+
+registry:
+  # Generate secure tokens with:
+  # openssl rand -hex 32  # for secret
+  # openssl rand -hex 16  # for hookToken
+  secret: ""  # HMAC secret for blob uploads (required for multi-replica)
+  hookToken: ""  # Webhook authentication token

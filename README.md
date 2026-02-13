@@ -51,20 +51,41 @@ bin/ephemeron serve
 
 All configuration is done via environment variables.
 
-| Variable             | Default                  | Description                              |
-|----------------------|--------------------------|------------------------------------------|
-| `PORT`               | `8000`                   | Public HTTP port (webhooks, landing page)|
-| `INTERNAL_PORT`      | `9090`                   | Internal port (healthz, readyz, metrics) |
-| `REDIS_URL`          | `redis://localhost:6379` | Redis connection URL                     |
-| `HOOK_TOKEN`         | *(required)*             | Shared secret for registry webhook auth  |
-| `REGISTRY_URL`       | `http://localhost:5000`  | OCI registry base URL                    |
-| `HOSTNAME_OVERRIDE`  | `localhost`              | Public hostname shown on landing page    |
-| `DEFAULT_TTL`        | `1h`                     | TTL for images with unparseable tags     |
-| `MAX_TTL`            | `24h`                    | Maximum allowed TTL                      |
-| `REAP_INTERVAL`      | `1m`                     | How often the reaper checks for expiries |
-| `LOG_FORMAT`         | `json`                   | Log format (`json` or `text`)            |
+| Variable                   | Default                  | Description                                        |
+|----------------------------|--------------------------|---------------------------------------------------|
+| `PORT`                     | `8000`                   | Public HTTP port (webhooks, landing page)         |
+| `INTERNAL_PORT`            | `9090`                   | Internal port (healthz, readyz, metrics)          |
+| `REDIS_URL`                | `redis://localhost:6379` | Redis connection URL                              |
+| `HOOK_TOKEN`               | *(required)*             | Shared secret for registry webhook auth           |
+| `REGISTRY_URL`             | `http://localhost:5000`  | OCI registry base URL                             |
+| `HOSTNAME_OVERRIDE`        | `localhost`              | Public hostname shown on landing page             |
+| `DEFAULT_TTL`              | `1h`                     | TTL for images with unparseable tags              |
+| `MAX_TTL`                  | `24h`                    | Maximum allowed TTL                               |
+| `REAP_INTERVAL`            | `1m`                     | How often the reaper checks for expiries          |
+| `LOG_FORMAT`               | `json`                   | Log format (`json` or `text`)                     |
+| `IMMUTABLE_TAG_PATTERNS`   | *(empty)*                | Comma-separated glob patterns for immutable tags  |
 
 `REDISCLOUD_URL` is also supported as an alias for `REDIS_URL`.
+
+### Tag Immutability Detection
+
+Ephemeron can detect and optionally enforce tag immutability — preventing the same tag from being pushed with different content.
+
+**Observability mode (default):** When `IMMUTABLE_TAG_PATTERNS` is empty or unset, all tag overwrites are logged and tracked via Prometheus metrics, but none are blocked.
+
+**Enforcement mode:** Set `IMMUTABLE_TAG_PATTERNS` to a comma-separated list of glob patterns. Tags matching these patterns will reject overwrites with HTTP 503, causing the registry to retry.
+
+```bash
+# Examples
+export IMMUTABLE_TAG_PATTERNS="prod-*,release-*"        # Block overwrites for prod-* and release-* tags
+export IMMUTABLE_TAG_PATTERNS="v[0-9]*,stable,latest"  # Block semantic versions, stable, and latest
+```
+
+**Metrics available:**
+- `ephemeron_immutability_tag_overwrites_total` — Count of detected overwrites
+- `ephemeron_immutability_overwritten_image_age_seconds` — Age distribution of overwritten images
+- `ephemeron_immutability_digest_fetch_errors_total` — Digest fetch failures
+- `ephemeron_immutability_immutable_tag_violations_total` — Blocked overwrites (enforcement mode)
 
 ## Recovery
 

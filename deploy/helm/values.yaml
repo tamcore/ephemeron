@@ -23,6 +23,10 @@ manager:
     reapInterval: "1m"
     # -- Log format: "json" or "text"
     logFormat: "json"
+    # -- Immutable tag patterns (glob patterns, comma-separated). Tags matching these patterns
+    # will reject overwrites with HTTP 503. Empty = observability mode only (log + metrics).
+    # Examples: "prod-*,release-*,v[0-9]*" or "stable,main"
+    immutableTagPatterns: ""
   metrics:
     serviceMonitor:
       # -- Create a ServiceMonitor resource for the manager

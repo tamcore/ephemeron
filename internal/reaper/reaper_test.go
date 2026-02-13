@@ -13,22 +13,34 @@ import (
 type mockStore struct {
 	images  map[string]int64 // imageWithTag -> expiresAt (epoch millis)
 	sizes   map[string]int64 // imageWithTag -> sizeBytes
+	digests map[string]string
+	created map[string]int64
 	removed []string
 }
 
 func newMockStore() *mockStore {
 	return &mockStore{
-		images: make(map[string]int64),
-		sizes:  make(map[string]int64),
+		images:  make(map[string]int64),
+		sizes:   make(map[string]int64),
+		digests: make(map[string]string),
+		created: make(map[string]int64),
 	}
 }
 
 func (m *mockStore) Ping(context.Context) error { return nil }
 func (m *mockStore) Close() error               { return nil }
 
-func (m *mockStore) TrackImage(_ context.Context, imageWithTag string, expiresAt time.Time, sizeBytes int64) error {
+func (m *mockStore) TrackImage(
+	_ context.Context,
+	imageWithTag string,
+	expiresAt time.Time,
+	sizeBytes int64,
+	digest string,
+) error {
 	m.images[imageWithTag] = expiresAt.UnixMilli()
 	m.sizes[imageWithTag] = sizeBytes
+	m.digests[imageWithTag] = digest
+	m.created[imageWithTag] = time.Now().UnixMilli()
 	return nil
 }
 
@@ -46,6 +58,14 @@ func (m *mockStore) GetExpiry(_ context.Context, imageWithTag string) (int64, er
 
 func (m *mockStore) GetImageSize(_ context.Context, imageWithTag string) (int64, error) {
 	return m.sizes[imageWithTag], nil
+}
+
+func (m *mockStore) GetImageDigest(_ context.Context, imageWithTag string) (string, error) {
+	return m.digests[imageWithTag], nil
+}
+
+func (m *mockStore) GetCreatedTimestamp(_ context.Context, imageWithTag string) (int64, error) {
+	return m.created[imageWithTag], nil
 }
 
 func (m *mockStore) RemoveImage(_ context.Context, imageWithTag string) error {

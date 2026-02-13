@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,16 +46,17 @@ func main() {
 
 func newConfig() *config.Config {
 	return &config.Config{
-		Port:         envInt("PORT", 8000),
-		InternalPort: envInt("INTERNAL_PORT", 9090),
-		RedisURL:     envStr("REDIS_URL", envStr("REDISCLOUD_URL", "redis://localhost:6379")),
-		HookToken:    envStr("HOOK_TOKEN", ""),
-		RegistryURL:  envStr("REGISTRY_URL", "http://localhost:5000"),
-		Hostname:     envStr("HOSTNAME_OVERRIDE", "localhost"),
-		DefaultTTL:   envDuration("DEFAULT_TTL", time.Hour),
-		MaxTTL:       envDuration("MAX_TTL", 24*time.Hour),
-		ReapInterval: envDuration("REAP_INTERVAL", time.Minute),
-		LogFormat:    envStr("LOG_FORMAT", "json"),
+		Port:                 envInt("PORT", 8000),
+		InternalPort:         envInt("INTERNAL_PORT", 9090),
+		RedisURL:             envStr("REDIS_URL", envStr("REDISCLOUD_URL", "redis://localhost:6379")),
+		HookToken:            envStr("HOOK_TOKEN", ""),
+		RegistryURL:          envStr("REGISTRY_URL", "http://localhost:5000"),
+		Hostname:             envStr("HOSTNAME_OVERRIDE", "localhost"),
+		DefaultTTL:           envDuration("DEFAULT_TTL", time.Hour),
+		MaxTTL:               envDuration("MAX_TTL", 24*time.Hour),
+		ReapInterval:         envDuration("REAP_INTERVAL", time.Minute),
+		LogFormat:            envStr("LOG_FORMAT", "json"),
+		ImmutableTagPatterns: envStrSlice("IMMUTABLE_TAG_PATTERNS", nil),
 	}
 }
 
@@ -110,6 +112,7 @@ func serveCmd() *cobra.Command {
 
 			hookHandler := hooks.NewHandler(
 				rdb, reg, cfg.HookToken, cfg.DefaultTTL, cfg.MaxTTL,
+				cfg.ImmutableTagPatterns,
 				logger.With("component", "hooks"),
 			)
 			mux.Handle("POST /v1/hook/registry-event", hookHandler)
@@ -263,4 +266,19 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 		}
 	}
 	return fallback
+}
+
+func envStrSlice(key string, fallback []string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	var result []string
+	for _, s := range strings.Split(v, ",") {
+		trimmed := strings.TrimSpace(s)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
