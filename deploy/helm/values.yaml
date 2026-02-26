@@ -103,6 +103,15 @@ ingress:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
+# Gateway API HTTPRoute — alternative to Ingress for clusters running nginx-gateway-fabric.
+# The SnippetsFilter blocks /v2/_catalog (registry catalog browsing), replacing the
+# previous server-snippet annotation. Requires NGF or compatible implementation.
+httpRoute:
+  enabled: false
+  parentRefs: []
+  #  - name: nginx-gateway
+  #    namespace: nginx-gateway
+
 # -- Redis HA subchart configuration
 redis-ha:
   hardAntiAffinity: false

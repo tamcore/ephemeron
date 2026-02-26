@@ -1,0 +1,74 @@
+{{- if .Values.httpRoute.enabled }}
+{{- $host := .Values.ingress.host }}
+---
+# SnippetsFilter — injects "return 403;" for /v2/_catalog to block registry catalog browsing.
+# Requires nginx-gateway-fabric or another NGF-compatible Gateway API implementation.
+apiVersion: gateway.nginx.org/v1alpha2
+kind: SnippetsFilter
+metadata:
+  name: {{ include "ephemeron.fullname" . }}-deny-catalog
+  labels:
+    {{- include "ephemeron.manager.labels" . | nindent 4 }}
+spec:
+  snippets:
+    - context: location
+      value: "return 403;"
+---
+# HTTPRoute for ephemeron-manager (web UI)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "ephemeron.manager.fullname" . }}
+  labels:
+    {{- include "ephemeron.manager.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  {{- if $host }}
+  hostnames:
+    - {{ $host | quote }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "ephemeron.manager.fullname" . }}
+          port: 8000
+---
+# HTTPRoute for ephemeron-registry (Docker registry at /v2)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "ephemeron.registry.fullname" . }}
+  labels:
+    {{- include "ephemeron.registry.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  {{- if $host }}
+  hostnames:
+    - {{ $host | quote }}
+  {{- end }}
+  rules:
+    # Block /v2/_catalog (registry catalog browsing) — replaces server-snippet annotation
+    - matches:
+        - path:
+            type: Exact
+            value: /v2/_catalog
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: {{ include "ephemeron.fullname" . }}-deny-catalog
+    # Route all other /v2 paths to registry
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v2
+      backendRefs:
+        - name: {{ include "ephemeron.registry.fullname" . }}
+          port: 5000
+{{- end }}
