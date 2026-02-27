@@ -3,7 +3,7 @@
 ---
 # SnippetsFilter — injects "return 403;" for /v2/_catalog to block registry catalog browsing.
 # Requires nginx-gateway-fabric or another NGF-compatible Gateway API implementation.
-apiVersion: gateway.nginx.org/v1alpha2
+apiVersion: gateway.nginx.org/v1alpha1
 kind: SnippetsFilter
 metadata:
   name: {{ include "ephemeron.fullname" . }}-deny-catalog
