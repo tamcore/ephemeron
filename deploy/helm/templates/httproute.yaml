@@ -11,7 +11,7 @@ metadata:
     {{- include "ephemeron.manager.labels" . | nindent 4 }}
 spec:
   snippets:
-    - context: location
+    - context: http.server.location
       value: "return 403;"
 ---
 # HTTPRoute for ephemeron-manager (web UI)
