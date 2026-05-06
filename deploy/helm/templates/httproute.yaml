@@ -23,7 +23,12 @@ metadata:
     {{- include "ephemeron.manager.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+    {{- range .Values.httpRoute.parentRefs }}
+    - name: {{ .name }}
+      namespace: {{ .namespace }}
+      group: {{ .group | default "gateway.networking.k8s.io" }}
+      kind: {{ .kind | default "Gateway" }}
+    {{- end }}
   {{- if $host }}
   hostnames:
     - {{ $host | quote }}
@@ -35,7 +40,10 @@ spec:
             value: /
       backendRefs:
         - name: {{ include "ephemeron.manager.fullname" . }}
+          group: ""
+          kind: Service
           port: 8000
+          weight: 1
 ---
 # HTTPRoute for ephemeron-registry (Docker registry at /v2)
 apiVersion: gateway.networking.k8s.io/v1
@@ -46,7 +54,12 @@ metadata:
     {{- include "ephemeron.registry.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+    {{- range .Values.httpRoute.parentRefs }}
+    - name: {{ .name }}
+      namespace: {{ .namespace }}
+      group: {{ .group | default "gateway.networking.k8s.io" }}
+      kind: {{ .kind | default "Gateway" }}
+    {{- end }}
   {{- if $host }}
   hostnames:
     - {{ $host | quote }}
@@ -70,5 +83,8 @@ spec:
             value: /v2
       backendRefs:
         - name: {{ include "ephemeron.registry.fullname" . }}
+          group: ""
+          kind: Service
           port: 5000
+          weight: 1
 {{- end }}
