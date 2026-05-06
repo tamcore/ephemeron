@@ -14,6 +14,8 @@ import (
 	"github.com/tamcore/ephemeron/internal/registry"
 )
 
+const actionPush = "push"
+
 // RegistryEvent represents a single event from the Docker Registry webhook.
 type RegistryEvent struct {
 	Action string      `json:"action"`
@@ -94,7 +96,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, event := range envelope.Events {
 		metrics.WebhookEventsTotal.WithLabelValues(event.Action).Inc()
 
-		if event.Action != "push" {
+		if event.Action != actionPush {
 			continue
 		}
 		if event.Target.Repository == "" || event.Target.Tag == "" {

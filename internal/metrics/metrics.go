@@ -5,35 +5,43 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+const (
+	nsEphemeron   = "ephemeron"
+	subsHooks     = "hooks"
+	subsReaper    = "reaper"
+	subsStorage   = "storage"
+	subsImmutable = "immutability"
+)
+
 var (
 	// WebhookEventsTotal counts registry webhook events received.
 	WebhookEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "hooks",
+		Namespace: nsEphemeron,
+		Subsystem: subsHooks,
 		Name:      "webhook_events_total",
 		Help:      "Total number of registry webhook events received.",
 	}, []string{"action"})
 
 	// ImagesTracked counts images added to TTL tracking.
 	ImagesTracked = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "hooks",
+		Namespace: nsEphemeron,
+		Subsystem: subsHooks,
 		Name:      "images_tracked_total",
 		Help:      "Total number of images added to TTL tracking.",
 	})
 
 	// ImagesReaped counts images deleted by the reaper.
 	ImagesReaped = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "reaper",
+		Namespace: nsEphemeron,
+		Subsystem: subsReaper,
 		Name:      "images_reaped_total",
 		Help:      "Total number of expired images deleted.",
 	})
 
 	// ReaperCycleDuration observes the duration of each reap cycle.
 	ReaperCycleDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "ephemeron",
-		Subsystem: "reaper",
+		Namespace: nsEphemeron,
+		Subsystem: subsReaper,
 		Name:      "cycle_duration_seconds",
 		Help:      "Duration of each reaper cycle in seconds.",
 		Buckets:   prometheus.DefBuckets,
@@ -41,40 +49,40 @@ var (
 
 	// ReaperCycleErrors counts failed reap cycles.
 	ReaperCycleErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "reaper",
+		Namespace: nsEphemeron,
+		Subsystem: subsReaper,
 		Name:      "cycle_errors_total",
 		Help:      "Total number of failed reaper cycles.",
 	})
 
 	// TrackedImagesGauge shows the current number of tracked images.
 	TrackedImagesGauge = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "ephemeron",
-		Subsystem: "reaper",
+		Namespace: nsEphemeron,
+		Subsystem: subsReaper,
 		Name:      "tracked_images",
 		Help:      "Current number of images being tracked for expiry.",
 	})
 
 	// TrackedBytesTotal shows the total storage currently tracked.
 	TrackedBytesTotal = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "ephemeron",
-		Subsystem: "storage",
+		Namespace: nsEphemeron,
+		Subsystem: subsStorage,
 		Name:      "tracked_bytes_total",
 		Help:      "Total storage in bytes currently tracked for expiry.",
 	})
 
 	// BytesReclaimed counts total storage reclaimed by deletion.
 	BytesReclaimed = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "storage",
+		Namespace: nsEphemeron,
+		Subsystem: subsStorage,
 		Name:      "bytes_reclaimed_total",
 		Help:      "Total storage in bytes reclaimed by deleting expired images.",
 	})
 
 	// ImageSizeBytes observes the size distribution of tracked images.
 	ImageSizeBytes = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "ephemeron",
-		Subsystem: "storage",
+		Namespace: nsEphemeron,
+		Subsystem: subsStorage,
 		Name:      "image_size_bytes",
 		Help:      "Size distribution of tracked images in bytes.",
 		Buckets: []float64{
@@ -85,24 +93,24 @@ var (
 
 	// ImageSizeFetchErrors counts failures to fetch image size from registry.
 	ImageSizeFetchErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "hooks",
+		Namespace: nsEphemeron,
+		Subsystem: subsHooks,
 		Name:      "image_size_fetch_errors_total",
 		Help:      "Total number of failures fetching image size from registry.",
 	})
 
 	// TagOverwritesTotal counts detected tag overwrites.
 	TagOverwritesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "immutability",
+		Namespace: nsEphemeron,
+		Subsystem: subsImmutable,
 		Name:      "tag_overwrites_total",
 		Help:      "Total tag overwrites detected (same tag, different digest).",
 	}, []string{"repository"})
 
 	// OverwrittenImageAge observes age of images when overwritten.
 	OverwrittenImageAge = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "ephemeron",
-		Subsystem: "immutability",
+		Namespace: nsEphemeron,
+		Subsystem: subsImmutable,
 		Name:      "overwritten_image_age_seconds",
 		Help:      "Age in seconds of previous image when tag was overwritten.",
 		Buckets: []float64{
@@ -114,16 +122,16 @@ var (
 
 	// DigestFetchErrors counts digest fetch failures.
 	DigestFetchErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "immutability",
+		Namespace: nsEphemeron,
+		Subsystem: subsImmutable,
 		Name:      "digest_fetch_errors_total",
 		Help:      "Total failures fetching digest from registry.",
 	})
 
 	// ImmutableTagViolations counts blocked overwrites in enforcement mode.
 	ImmutableTagViolations = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "ephemeron",
-		Subsystem: "immutability",
+		Namespace: nsEphemeron,
+		Subsystem: subsImmutable,
 		Name:      "immutable_tag_violations_total",
 		Help:      "Total overwrite attempts blocked by immutability enforcement.",
 	}, []string{"repository", "tag"})

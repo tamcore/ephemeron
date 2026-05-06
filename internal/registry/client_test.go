@@ -8,13 +8,15 @@ import (
 	"testing"
 )
 
+const testRepo1 = "app1"
+
 func TestListRepositories(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/_catalog" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(catalogResponse{
-			Repositories: []string{"app1", "app2"},
+			Repositories: []string{testRepo1, "app2"},
 		})
 	}))
 	defer srv.Close()
@@ -28,7 +30,7 @@ func TestListRepositories(t *testing.T) {
 	if len(repos) != 2 {
 		t.Fatalf("expected 2 repos, got %d", len(repos))
 	}
-	if repos[0] != "app1" || repos[1] != "app2" {
+	if repos[0] != testRepo1 || repos[1] != "app2" {
 		t.Fatalf("unexpected repos: %v", repos)
 	}
 }
@@ -62,7 +64,7 @@ func TestListRepositories_Pagination(t *testing.T) {
 		if callCount == 1 {
 			w.Header().Set("Link", `</v2/_catalog?n=1000&last=app1>; rel="next"`)
 			_ = json.NewEncoder(w).Encode(catalogResponse{
-				Repositories: []string{"app1"},
+				Repositories: []string{testRepo1},
 			})
 		} else {
 			_ = json.NewEncoder(w).Encode(catalogResponse{

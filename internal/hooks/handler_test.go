@@ -13,6 +13,13 @@ import (
 	"github.com/tamcore/ephemeron/internal/registry"
 )
 
+const (
+	testApp        = "myapp"
+	testAppTTL     = "myapp:1h"
+	testAppProdTTL = "myapp:prod-1h"
+	testPush       = "push"
+)
+
 func TestHandler_Auth(t *testing.T) {
 	handler := NewHandler(nil, nil, "test-token", 0, 0, nil, slog.Default())
 
@@ -91,8 +98,8 @@ func TestHandler_EventParsing(t *testing.T) {
 	t.Run("skips events with empty repo or tag", func(t *testing.T) {
 		handler := NewHandler(nil, nil, "tok", 0, 0, nil, slog.Default())
 		body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-			{Action: "push", Target: EventTarget{Repository: "", Tag: "1h"}},
-			{Action: "push", Target: EventTarget{Repository: "foo", Tag: ""}},
+			{Action: testPush, Target: EventTarget{Repository: "", Tag: "1h"}},
+			{Action: testPush, Target: EventTarget{Repository: "foo", Tag: ""}},
 		}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
 		req.Header.Set("Authorization", "Token tok")
@@ -185,17 +192,17 @@ func TestHandler_SizeTracking_Success(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
 		sizes: map[string]int64{
-			"myapp:1h": 12345678,
+			testAppTTL: 12345678,
 		},
 		digests: map[string]string{
-			"myapp:1h": "sha256:abc123",
+			testAppTTL: "sha256:abc123",
 		},
 	}
 
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -208,12 +215,12 @@ func TestHandler_SizeTracking_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 
-	if _, exists := store.images["myapp:1h"]; !exists {
+	if _, exists := store.images[testAppTTL]; !exists {
 		t.Fatal("expected image to be tracked")
 	}
 
-	if store.sizes["myapp:1h"] != 12345678 {
-		t.Fatalf("expected size 12345678, got %d", store.sizes["myapp:1h"])
+	if store.sizes[testAppTTL] != 12345678 {
+		t.Fatalf("expected size 12345678, got %d", store.sizes[testAppTTL])
 	}
 }
 
@@ -226,7 +233,7 @@ func TestHandler_SizeTracking_FetchError(t *testing.T) {
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -240,27 +247,27 @@ func TestHandler_SizeTracking_FetchError(t *testing.T) {
 		t.Fatalf("expected 200 despite fetch error, got %d", rr.Code)
 	}
 
-	if _, exists := store.images["myapp:1h"]; !exists {
+	if _, exists := store.images[testAppTTL]; !exists {
 		t.Fatal("expected image to be tracked even with size fetch error")
 	}
 
 	// Should track with size=0 on error
-	if store.sizes["myapp:1h"] != 0 {
-		t.Fatalf("expected size 0 on fetch error, got %d", store.sizes["myapp:1h"])
+	if store.sizes[testAppTTL] != 0 {
+		t.Fatalf("expected size 0 on fetch error, got %d", store.sizes[testAppTTL])
 	}
 }
 
 func TestDetectOverwrite_FirstPush(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
-		sizes:   map[string]int64{"myapp:1h": 100000},
-		digests: map[string]string{"myapp:1h": "sha256:new123"},
+		sizes:   map[string]int64{testAppTTL: 100000},
+		digests: map[string]string{testAppTTL: "sha256:new123"},
 	}
 
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -274,26 +281,26 @@ func TestDetectOverwrite_FirstPush(t *testing.T) {
 		t.Fatalf("expected 200 for first push, got %d", rr.Code)
 	}
 
-	if store.digests["myapp:1h"] != "sha256:new123" {
-		t.Fatalf("expected digest to be stored, got %s", store.digests["myapp:1h"])
+	if store.digests[testAppTTL] != "sha256:new123" {
+		t.Fatalf("expected digest to be stored, got %s", store.digests[testAppTTL])
 	}
 }
 
 func TestDetectOverwrite_SameDigest(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
-		sizes:   map[string]int64{"myapp:1h": 100000},
-		digests: map[string]string{"myapp:1h": "sha256:same123"},
+		sizes:   map[string]int64{testAppTTL: 100000},
+		digests: map[string]string{testAppTTL: "sha256:same123"},
 	}
 
 	// Pre-populate with existing digest
-	store.digests["myapp:1h"] = "sha256:same123"
-	store.created["myapp:1h"] = time.Now().UnixMilli()
+	store.digests[testAppTTL] = "sha256:same123"
+	store.created[testAppTTL] = time.Now().UnixMilli()
 
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -311,19 +318,19 @@ func TestDetectOverwrite_SameDigest(t *testing.T) {
 func TestDetectOverwrite_DifferentDigest_Observability(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
-		sizes:   map[string]int64{"myapp:1h": 100000},
-		digests: map[string]string{"myapp:1h": "sha256:new456"},
+		sizes:   map[string]int64{testAppTTL: 100000},
+		digests: map[string]string{testAppTTL: "sha256:new456"},
 	}
 
 	// Pre-populate with different existing digest
-	store.digests["myapp:1h"] = "sha256:old123"
-	store.created["myapp:1h"] = time.Now().Add(-10 * time.Minute).UnixMilli()
+	store.digests[testAppTTL] = "sha256:old123"
+	store.created[testAppTTL] = time.Now().Add(-10 * time.Minute).UnixMilli()
 
 	// No immutable patterns = observability mode only
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -338,27 +345,27 @@ func TestDetectOverwrite_DifferentDigest_Observability(t *testing.T) {
 	}
 
 	// New digest should be stored
-	if store.digests["myapp:1h"] != "sha256:new456" {
-		t.Fatalf("expected new digest to be stored, got %s", store.digests["myapp:1h"])
+	if store.digests[testAppTTL] != "sha256:new456" {
+		t.Fatalf("expected new digest to be stored, got %s", store.digests[testAppTTL])
 	}
 }
 
 func TestDetectOverwrite_DifferentDigest_Enforcement(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
-		sizes:   map[string]int64{"myapp:prod-1h": 100000},
-		digests: map[string]string{"myapp:prod-1h": "sha256:new789"},
+		sizes:   map[string]int64{testAppProdTTL: 100000},
+		digests: map[string]string{testAppProdTTL: "sha256:new789"},
 	}
 
 	// Pre-populate with different existing digest
-	store.digests["myapp:prod-1h"] = "sha256:old456"
-	store.created["myapp:prod-1h"] = time.Now().Add(-5 * time.Minute).UnixMilli()
+	store.digests[testAppProdTTL] = "sha256:old456"
+	store.created[testAppProdTTL] = time.Now().Add(-5 * time.Minute).UnixMilli()
 
 	// Set immutable pattern that matches "prod-*"
 	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, []string{"prod-*"}, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: "push", Target: EventTarget{Repository: "myapp", Tag: "prod-1h"}},
+		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "prod-1h"}},
 	}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
@@ -373,8 +380,8 @@ func TestDetectOverwrite_DifferentDigest_Enforcement(t *testing.T) {
 	}
 
 	// Old digest should still be in store (webhook failed before tracking)
-	if store.digests["myapp:prod-1h"] != "sha256:old456" {
-		t.Fatalf("expected old digest to remain, got %s", store.digests["myapp:prod-1h"])
+	if store.digests[testAppProdTTL] != "sha256:old456" {
+		t.Fatalf("expected old digest to remain, got %s", store.digests[testAppProdTTL])
 	}
 }
 
