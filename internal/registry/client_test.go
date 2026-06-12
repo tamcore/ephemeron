@@ -91,6 +91,82 @@ func TestListRepositories_Pagination(t *testing.T) {
 	}
 }
 
+func TestListRepositories_HTTPErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+	}{
+		{name: "not found", status: http.StatusNotFound},
+		{name: "internal server error", status: http.StatusInternalServerError},
+		{name: "service unavailable", status: http.StatusServiceUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_ = json.NewEncoder(w).Encode(map[string]string{"errors": "something broke"})
+			}))
+			defer srv.Close()
+
+			c := New(srv.URL)
+			_, err := c.ListRepositories(context.Background())
+			if err == nil {
+				t.Fatalf("expected error for status %d, got nil", tt.status)
+			}
+		})
+	}
+}
+
+func TestListTags_HTTPErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+	}{
+		{name: "not found", status: http.StatusNotFound},
+		{name: "internal server error", status: http.StatusInternalServerError},
+		{name: "service unavailable", status: http.StatusServiceUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_ = json.NewEncoder(w).Encode(map[string]string{"errors": "something broke"})
+			}))
+			defer srv.Close()
+
+			c := New(srv.URL)
+			_, err := c.ListTags(context.Background(), "myapp")
+			if err == nil {
+				t.Fatalf("expected error for status %d, got nil", tt.status)
+			}
+		})
+	}
+}
+
+func TestListRepositories_PaginationRunaway(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		// Always return a next link — simulates a broken registry.
+		w.Header().Set("Link", `</v2/_catalog?n=1000&last=app1>; rel="next"`)
+		_ = json.NewEncoder(w).Encode(catalogResponse{
+			Repositories: []string{testRepo1},
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	_, err := c.ListRepositories(context.Background())
+	if err == nil {
+		t.Fatal("expected error for runaway pagination, got nil")
+	}
+	if callCount != maxPages {
+		t.Fatalf("expected %d API calls, got %d", maxPages, callCount)
+	}
+}
+
 func TestGetImageSize_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/myapp/manifests/1h" {
