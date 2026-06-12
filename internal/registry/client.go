@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// maxPages bounds pagination loops so a registry returning broken
+// Link headers cannot keep the client looping forever.
+const maxPages = 100
+
 // Client talks to the OCI distribution registry HTTP API.
 type Client struct {
 	baseURL    string
@@ -59,7 +63,11 @@ func (c *Client) ListRepositories(ctx context.Context) ([]string, error) {
 	var all []string
 	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL)
 
-	for url != "" {
+	for page := 0; url != ""; page++ {
+		if page >= maxPages {
+			return nil, fmt.Errorf("catalog pagination exceeded %d pages", maxPages)
+		}
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating catalog request: %w", err)
@@ -68,6 +76,11 @@ func (c *Client) ListRepositories(ctx context.Context) ([]string, error) {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("listing catalog: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("catalog request failed: status %d", resp.StatusCode)
 		}
 
 		var catalog catalogResponse
@@ -89,7 +102,11 @@ func (c *Client) ListTags(ctx context.Context, repo string) ([]string, error) {
 	var all []string
 	url := fmt.Sprintf("%s/v2/%s/tags/list?n=1000", c.baseURL, repo)
 
-	for url != "" {
+	for page := 0; url != ""; page++ {
+		if page >= maxPages {
+			return nil, fmt.Errorf("tags pagination for %s exceeded %d pages", repo, maxPages)
+		}
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating tags request: %w", err)
@@ -98,6 +115,11 @@ func (c *Client) ListTags(ctx context.Context, repo string) ([]string, error) {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("listing tags for %s: %w", repo, err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("tags request for %s failed: status %d", repo, resp.StatusCode)
 		}
 
 		var tags tagsResponse

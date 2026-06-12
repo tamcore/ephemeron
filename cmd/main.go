@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,20 +47,20 @@ func main() {
 	}
 }
 
-func newConfig() *config.Config {
+func newConfig(logger *slog.Logger) *config.Config {
 	return &config.Config{
-		Port:                   envInt("PORT", 8000),
-		InternalPort:           envInt("INTERNAL_PORT", 9090),
+		Port:                   envInt(logger, "PORT", 8000),
+		InternalPort:           envInt(logger, "INTERNAL_PORT", 9090),
 		RedisURL:               envStr("REDIS_URL", envStr("REDISCLOUD_URL", "redis://localhost:6379")),
 		HookToken:              envStr("HOOK_TOKEN", ""),
 		RegistryURL:            envStr("REGISTRY_URL", "http://localhost:5000"),
 		Hostname:               envStr("HOSTNAME_OVERRIDE", "localhost"),
-		DefaultTTL:             envDuration("DEFAULT_TTL", time.Hour),
-		MaxTTL:                 envDuration("MAX_TTL", 24*time.Hour),
-		ReapInterval:           envDuration("REAP_INTERVAL", time.Minute),
+		DefaultTTL:             envDuration(logger, "DEFAULT_TTL", time.Hour),
+		MaxTTL:                 envDuration(logger, "MAX_TTL", 24*time.Hour),
+		ReapInterval:           envDuration(logger, "REAP_INTERVAL", time.Minute),
 		LogFormat:              envStr("LOG_FORMAT", "json"),
 		ImmutableTagPatterns:   envStrSlice("IMMUTABLE_TAG_PATTERNS", nil),
-		HealthFailureThreshold: envInt("HEALTH_FAILURE_THRESHOLD", 3),
+		HealthFailureThreshold: envInt(logger, "HEALTH_FAILURE_THRESHOLD", 3),
 	}
 }
 
@@ -77,12 +79,11 @@ func serveCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the webhook server, reaper loop, and landing page",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := newConfig()
+			logger := setupLogger(envStr("LOG_FORMAT", "json"))
+			cfg := newConfig(logger)
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
-
-			logger := setupLogger(cfg.LogFormat)
 
 			rdb, err := redisclient.New(cfg.RedisURL)
 			if err != nil {
@@ -149,39 +150,66 @@ func serveCmd() *cobra.Command {
 			internalMux.Handle("GET /metrics", promhttp.Handler())
 
 			srv := &http.Server{
-				Addr:              fmt.Sprintf(":%d", cfg.Port),
 				Handler:           mux,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 			internalSrv := &http.Server{
-				Addr:              fmt.Sprintf(":%d", cfg.InternalPort),
 				Handler:           internalMux,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 
-			go func() {
-				<-ctx.Done()
-				logger.Info("shutting down HTTP servers")
-				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer shutdownCancel()
-				_ = srv.Shutdown(shutdownCtx)
-				_ = internalSrv.Shutdown(shutdownCtx)
-			}()
-
-			go func() {
-				logger.Info("starting internal server", "port", cfg.InternalPort)
-				if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					logger.Error("internal server failed", "error", err)
-				}
-			}()
-
-			logger.Info("starting server", "port", cfg.Port)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				return err
+			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+			if err != nil {
+				return fmt.Errorf("listening on port %d: %w", cfg.Port, err)
 			}
-			return nil
+			internalLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.InternalPort))
+			if err != nil {
+				return fmt.Errorf("listening on internal port %d: %w", cfg.InternalPort, err)
+			}
+
+			return runServers(ctx, logger, srv, internalSrv, ln, internalLn)
 		},
 	}
+}
+
+const shutdownTimeout = 10 * time.Second
+
+// runServers serves both HTTP servers until the context is cancelled, then
+// shuts them down gracefully and waits for in-flight requests to drain
+// before returning.
+func runServers(
+	ctx context.Context,
+	logger *slog.Logger,
+	srv, internalSrv *http.Server,
+	ln, internalLn net.Listener,
+) error {
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		<-ctx.Done()
+		logger.Info("shutting down HTTP servers")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer shutdownCancel()
+		_ = srv.Shutdown(shutdownCtx)
+		_ = internalSrv.Shutdown(shutdownCtx)
+	}()
+
+	go func() {
+		logger.Info("starting internal server", "addr", internalLn.Addr().String())
+		if err := internalSrv.Serve(internalLn); err != nil && err != http.ErrServerClosed {
+			logger.Error("internal server failed", "error", err)
+		}
+	}()
+
+	logger.Info("starting server", "addr", ln.Addr().String())
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	// Serve only returns ErrServerClosed after Shutdown was initiated, so
+	// wait for the shutdown goroutine to finish draining both servers.
+	<-shutdownDone
+	return nil
 }
 
 func reapCmd() *cobra.Command {
@@ -189,12 +217,11 @@ func reapCmd() *cobra.Command {
 		Use:   "reap",
 		Short: "Run a single reap cycle (for CronJob or debugging)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := newConfig()
+			logger := setupLogger(envStr("LOG_FORMAT", "json"))
+			cfg := newConfig(logger)
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
-
-			logger := setupLogger(cfg.LogFormat)
 
 			rdb, err := redisclient.New(cfg.RedisURL)
 			if err != nil {
@@ -214,12 +241,11 @@ func recoverCmd() *cobra.Command {
 		Use:   "recover",
 		Short: "Re-populate Redis by scanning the registry catalog",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := newConfig()
+			logger := setupLogger(envStr("LOG_FORMAT", "json"))
+			cfg := newConfig(logger)
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
-
-			logger := setupLogger(cfg.LogFormat)
 
 			rdb, err := redisclient.New(cfg.RedisURL)
 			if err != nil {
@@ -257,23 +283,32 @@ func envStr(key, fallback string) string {
 	return fallback
 }
 
-func envInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		var n int
-		if _, err := fmt.Sscanf(v, "%d", &n); err == nil {
-			return n
-		}
+func envInt(logger *slog.Logger, key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
 	}
-	return fallback
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		logger.Warn("invalid integer in environment variable, using fallback",
+			"key", key, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return n
 }
 
-func envDuration(key string, fallback time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
+func envDuration(logger *slog.Logger, key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
 	}
-	return fallback
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		logger.Warn("invalid duration in environment variable, using fallback",
+			"key", key, "value", v, "fallback", fallback.String())
+		return fallback
+	}
+	return d
 }
 
 func envStrSlice(key string, fallback []string) []string {

@@ -97,7 +97,13 @@ func (r *Reaper) ReapOnce(ctx context.Context) error {
 		return fmt.Errorf("listing images: %w", err)
 	}
 
-	r.logger.Info("reap cycle starting", "total_images", len(images))
+	// An empty registry produces one of these per interval — keep that at
+	// debug so steady-state logs stay quiet.
+	cycleLog := r.logger.Info
+	if len(images) == 0 {
+		cycleLog = r.logger.Debug
+	}
+	cycleLog("reap cycle starting", "total_images", len(images))
 	metrics.TrackedImagesGauge.Set(float64(len(images)))
 
 	now := time.Now().UnixMilli()
