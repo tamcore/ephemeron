@@ -2,8 +2,9 @@ name: ephemeron-s3
 
 services:
   minio:
-    image: cgr.dev/chainguard/minio:latest
+    image: cgr.dev/chainguard/minio:latest@sha256:626f73abb00da35765ae77b3dfcd221375b286e956a6bf4e0969a9c16cb5fc1f
     command: ["server", "/data"]
+    # Default credentials are fine here: this stack is local/CI-only.
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -14,7 +15,7 @@ services:
       retries: 10
 
   minio-init:
-    image: cgr.dev/chainguard/minio-client:latest-dev
+    image: cgr.dev/chainguard/minio-client:latest-dev@sha256:aa14fb0ca0a404c239de86b4366929c98f969480dd2be75759a0ed66a946a33b
     depends_on:
       minio:
         condition: service_healthy

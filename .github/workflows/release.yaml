@@ -63,13 +63,6 @@ jobs:
               --password-stdin \
               ghcr.io
 
-      - name: Install yq
-        env:
-          YQ_VERSION: "v4.35.2"
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/bin/yq && \
-            sudo chmod +x /usr/bin/yq
-
       - name: Update Chart
         env:
           VERSION: "${{ github.ref_name }}"
