@@ -23,24 +23,32 @@ const (
 func TestHandler_Auth(t *testing.T) {
 	handler := NewHandler(nil, nil, "test-token", 0, 0, nil, slog.Default())
 
-	t.Run("rejects missing auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader([]byte("{}")))
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("expected 401, got %d", rr.Code)
-		}
-	})
+	tests := []struct {
+		name     string
+		auth     string
+		wantCode int
+	}{
+		{name: "accepts valid token", auth: "Token test-token", wantCode: http.StatusOK},
+		{name: "rejects missing auth", auth: "", wantCode: http.StatusUnauthorized},
+		{name: "rejects wrong token", auth: "Token wrong-token", wantCode: http.StatusUnauthorized},
+		{name: "rejects wrong token of same length", auth: "Token test-tokem", wantCode: http.StatusUnauthorized},
+		{name: "rejects wrong scheme", auth: "Bearer test-token", wantCode: http.StatusUnauthorized},
+		{name: "rejects token with trailing whitespace", auth: "Token test-token ", wantCode: http.StatusUnauthorized},
+	}
 
-	t.Run("rejects wrong token", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader([]byte("{}")))
-		req.Header.Set("Authorization", "Token wrong-token")
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("expected 401, got %d", rr.Code)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader([]byte("{}")))
+			if tt.auth != "" {
+				req.Header.Set("Authorization", tt.auth)
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != tt.wantCode {
+				t.Errorf("expected %d, got %d", tt.wantCode, rr.Code)
+			}
+		})
+	}
 
 	t.Run("rejects wrong method", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/hook/registry-event", nil)

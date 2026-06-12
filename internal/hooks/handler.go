@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -78,7 +79,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth := r.Header.Get("Authorization")
-	if auth != fmt.Sprintf("Token %s", h.hookToken) {
+	expected := "Token " + h.hookToken
+	if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 		h.logger.Warn("unauthorized webhook request")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("{}"))
