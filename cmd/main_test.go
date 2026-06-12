@@ -94,6 +94,65 @@ func TestRunServers_DrainsInFlightRequestsOnShutdown(t *testing.T) {
 	}
 }
 
+func TestEnvInt(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		set      bool
+		fallback int
+		want     int
+	}{
+		{name: "unset uses fallback", set: false, fallback: 8000, want: 8000},
+		{name: "valid value", value: "9999", set: true, fallback: 8000, want: 9999},
+		{name: "negative value", value: "-1", set: true, fallback: 8000, want: -1},
+		{name: "malformed value uses fallback", value: "abc", set: true, fallback: 8000, want: 8000},
+		{name: "trailing garbage uses fallback", value: "12x", set: true, fallback: 8000, want: 8000},
+		{name: "empty value uses fallback", value: "", set: true, fallback: 8000, want: 8000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := "TEST_ENV_INT"
+			if tt.set {
+				t.Setenv(key, tt.value)
+			}
+			got := envInt(slog.Default(), key, tt.fallback)
+			if got != tt.want {
+				t.Errorf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestEnvDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		set      bool
+		fallback time.Duration
+		want     time.Duration
+	}{
+		{name: "unset uses fallback", set: false, fallback: time.Hour, want: time.Hour},
+		{name: "valid value", value: "30m", set: true, fallback: time.Hour, want: 30 * time.Minute},
+		{name: "malformed value uses fallback", value: "abc", set: true, fallback: time.Hour, want: time.Hour},
+		{name: "bare number uses fallback", value: "30", set: true, fallback: time.Hour, want: time.Hour},
+		{name: "empty value uses fallback", value: "", set: true, fallback: time.Hour, want: time.Hour},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := "TEST_ENV_DURATION"
+			if tt.set {
+				t.Setenv(key, tt.value)
+			}
+			got := envDuration(slog.Default(), key, tt.fallback)
+			if got != tt.want {
+				t.Errorf("expected %s, got %s", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestRunServers_ReturnsPromptlyWhenIdle(t *testing.T) {
 	srv := &http.Server{Handler: http.NewServeMux(), ReadHeaderTimeout: time.Second}
 	internalSrv := &http.Server{Handler: http.NewServeMux(), ReadHeaderTimeout: time.Second}
