@@ -1,3 +1,4 @@
+{{- if .Values.ingress.host }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -28,3 +29,4 @@ spec:
     - hosts:
         - {{ .Values.ingress.host }}
       secretName: {{ include "ephemeron.fullname" . }}-tls
+{{- end }}

@@ -14,15 +14,14 @@ manager:
     reapInterval: "1m"
     logFormat: "json"
 
-# Configure your registry host
-ingress:
-  host: "registry.example.com"
-
-# Optional: Enable Prometheus ServiceMonitor for immutability metrics
-manager:
+  # Optional: Enable Prometheus ServiceMonitor for immutability metrics
   metrics:
     serviceMonitor:
       enabled: true
+
+# Configure your registry host
+ingress:
+  host: "registry.example.com"
 
 registry:
   # Generate secure tokens with:
