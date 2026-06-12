@@ -22,7 +22,7 @@ services:
     entrypoint: ["/bin/sh", "-c", "mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/registry"]
 
   registry:
-    image: registry:3.0.0
+    image: registry:3.1.1
     ports:
       - "5000:5000"
     volumes:
