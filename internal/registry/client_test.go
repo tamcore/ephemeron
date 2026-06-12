@@ -8,7 +8,10 @@ import (
 	"testing"
 )
 
-const testRepo1 = "app1"
+const (
+	testRepo1 = "app1"
+	testRepo2 = "app2"
+)
 
 func TestListRepositories(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -16,7 +19,7 @@ func TestListRepositories(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(catalogResponse{
-			Repositories: []string{testRepo1, "app2"},
+			Repositories: []string{testRepo1, testRepo2},
 		})
 	}))
 	defer srv.Close()
@@ -30,7 +33,7 @@ func TestListRepositories(t *testing.T) {
 	if len(repos) != 2 {
 		t.Fatalf("expected 2 repos, got %d", len(repos))
 	}
-	if repos[0] != testRepo1 || repos[1] != "app2" {
+	if repos[0] != testRepo1 || repos[1] != testRepo2 {
 		t.Fatalf("unexpected repos: %v", repos)
 	}
 }
@@ -68,7 +71,7 @@ func TestListRepositories_Pagination(t *testing.T) {
 			})
 		} else {
 			_ = json.NewEncoder(w).Encode(catalogResponse{
-				Repositories: []string{"app2"},
+				Repositories: []string{testRepo2},
 			})
 		}
 	}))
