@@ -1,0 +1,8 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>tamcore/renovate",
+    "github>tamcore/renovate:go",
+    "github>tamcore/renovate:automerge-minor"
+  ]
+}

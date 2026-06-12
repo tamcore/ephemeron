@@ -23,12 +23,34 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -v ./... -coverprofile cover.out
+        run: go test -v ./...
 
       - name: Lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
         with:
-          version: latest
+          version: v2.12.2 # renovate: datasource=github-releases depName=golangci/golangci-lint
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - name: Build chart dependencies
+        run: helm dependency build deploy/helm
+
+      - name: Lint chart
+        run: helm lint deploy/helm
+
+      - name: Template chart (default values)
+        run: helm template ephemeron deploy/helm > /dev/null
+
+      - name: Template chart (immutability example values)
+        run: helm template ephemeron deploy/helm -f deploy/helm/values-with-immutability.yaml > /dev/null
+
+      - name: Template chart (s3 storage mode)
+        run: helm template ephemeron deploy/helm --set registry.storage.mode=s3 --set registry.replicas=2 > /dev/null
 
   e2e:
     runs-on: ubuntu-latest

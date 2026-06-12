@@ -73,7 +73,7 @@ KO = $(LOCALBIN)/ko-$(KO_VERSION)
 
 ## Tool Versions
 # renovate: datasource=github-releases depName=golangci/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.8.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 # renovate: datasource=github-releases depName=ko-build/ko
 KO_VERSION ?= v0.18.1
