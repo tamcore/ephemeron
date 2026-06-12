@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -149,39 +150,66 @@ func serveCmd() *cobra.Command {
 			internalMux.Handle("GET /metrics", promhttp.Handler())
 
 			srv := &http.Server{
-				Addr:              fmt.Sprintf(":%d", cfg.Port),
 				Handler:           mux,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 			internalSrv := &http.Server{
-				Addr:              fmt.Sprintf(":%d", cfg.InternalPort),
 				Handler:           internalMux,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
 
-			go func() {
-				<-ctx.Done()
-				logger.Info("shutting down HTTP servers")
-				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer shutdownCancel()
-				_ = srv.Shutdown(shutdownCtx)
-				_ = internalSrv.Shutdown(shutdownCtx)
-			}()
-
-			go func() {
-				logger.Info("starting internal server", "port", cfg.InternalPort)
-				if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					logger.Error("internal server failed", "error", err)
-				}
-			}()
-
-			logger.Info("starting server", "port", cfg.Port)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				return err
+			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+			if err != nil {
+				return fmt.Errorf("listening on port %d: %w", cfg.Port, err)
 			}
-			return nil
+			internalLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.InternalPort))
+			if err != nil {
+				return fmt.Errorf("listening on internal port %d: %w", cfg.InternalPort, err)
+			}
+
+			return runServers(ctx, logger, srv, internalSrv, ln, internalLn)
 		},
 	}
+}
+
+const shutdownTimeout = 10 * time.Second
+
+// runServers serves both HTTP servers until the context is cancelled, then
+// shuts them down gracefully and waits for in-flight requests to drain
+// before returning.
+func runServers(
+	ctx context.Context,
+	logger *slog.Logger,
+	srv, internalSrv *http.Server,
+	ln, internalLn net.Listener,
+) error {
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		<-ctx.Done()
+		logger.Info("shutting down HTTP servers")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer shutdownCancel()
+		_ = srv.Shutdown(shutdownCtx)
+		_ = internalSrv.Shutdown(shutdownCtx)
+	}()
+
+	go func() {
+		logger.Info("starting internal server", "addr", internalLn.Addr().String())
+		if err := internalSrv.Serve(internalLn); err != nil && err != http.ErrServerClosed {
+			logger.Error("internal server failed", "error", err)
+		}
+	}()
+
+	logger.Info("starting server", "addr", ln.Addr().String())
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	// Serve only returns ErrServerClosed after Shutdown was initiated, so
+	// wait for the shutdown goroutine to finish draining both servers.
+	<-shutdownDone
+	return nil
 }
 
 func reapCmd() *cobra.Command {
