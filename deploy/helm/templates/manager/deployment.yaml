@@ -17,10 +17,22 @@ spec:
       labels:
         {{- include "ephemeron.manager.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.manager.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: manager
           image: {{ .Values.manager.image.repository }}{{ if .Values.manager.image.digest }}@{{ .Values.manager.image.digest }}{{ else }}:{{ coalesce .Values.manager.image.tag .Chart.AppVersion }}{{ end }}
           args: ["serve"]
+          {{- with .Values.manager.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.manager.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             - name: REDIS_URL
               value: redis://{{ .Release.Name }}-redis-ha-haproxy:6379

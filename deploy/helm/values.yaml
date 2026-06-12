@@ -31,6 +31,24 @@ manager:
     serviceMonitor:
       # -- Create a ServiceMonitor resource for the manager
       enabled: false
+  # -- Resource requests/limits for the manager container
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  # -- Pod-level security context for the manager (ko-built static image, runs as nonroot)
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container-level security context for the manager
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
 
 # -- OCI/Docker registry (distribution/distribution)
 registry:
@@ -50,6 +68,26 @@ registry:
   hookToken: ""
   # -- Number of registry replicas. Only >1 when using S3 storage mode.
   replicas: 1
+  # -- Resource requests/limits for the registry container. Empty by default;
+  # size according to storage mode and traffic, e.g.:
+  # resources:
+  #   requests: {cpu: 100m, memory: 256Mi}
+  #   limits: {memory: 512Mi}
+  resources: {}
+  # -- Pod-level security context for the registry. Empty by default because
+  # forcing runAsNonRoot/fsGroup on existing filesystem-mode PVCs can break
+  # file ownership on upgrade. Recommended for new installs:
+  # podSecurityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+  #   fsGroup: 1000
+  #   seccompProfile: {type: RuntimeDefault}
+  podSecurityContext: {}
+  # -- Container-level security context for the registry. Recommended:
+  # securityContext:
+  #   allowPrivilegeEscalation: false
+  #   capabilities: {drop: ["ALL"]}
+  securityContext: {}
   cache:
     # -- Blob descriptor cache: "inmemory" (per-pod) or "redis" (shared via redis-ha).
     blobdescriptor: inmemory
@@ -64,6 +102,8 @@ registry:
     successfulJobsHistoryLimit: 1
     # -- Number of failed GC jobs to keep
     failedJobsHistoryLimit: 3
+    # -- Resource requests/limits for the garbage-collection job container
+    resources: {}
   metrics:
     # -- Expose Prometheus metrics on port 5001 (/metrics)
     enabled: true

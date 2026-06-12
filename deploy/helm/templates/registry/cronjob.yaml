@@ -24,6 +24,10 @@ spec:
                 - garbage-collect
                 - --delete-untagged={{ .Values.registry.gc.deleteUntagged }}
                 - /etc/distribution/config.yml
+              {{- with .Values.registry.gc.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
               volumeMounts:
                 - name: config
                   mountPath: /etc/distribution

@@ -20,9 +20,21 @@ spec:
       labels:
         {{- include "ephemeron.registry.selectorLabels" . | nindent 8 }}
     spec:
+      {{- with .Values.registry.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: registry
           image: {{ .Values.registry.image.repository }}:{{ .Values.registry.image.tag }}
+          {{- with .Values.registry.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.registry.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 5000
               name: registry
