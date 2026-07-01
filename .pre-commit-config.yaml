@@ -31,6 +31,13 @@ repos:
         types: [go]
         pass_filenames: false
 
+      - id: go-fix
+        name: go fix
+        entry: go fix ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
       - id: golangci-lint
         name: golangci-lint
         entry: golangci-lint run
