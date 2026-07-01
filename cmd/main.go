@@ -317,7 +317,7 @@ func envStrSlice(key string, fallback []string) []string {
 		return fallback
 	}
 	var result []string
-	for _, s := range strings.Split(v, ",") {
+	for s := range strings.SplitSeq(v, ",") {
 		trimmed := strings.TrimSpace(s)
 		if trimmed != "" {
 			result = append(result, trimmed)
