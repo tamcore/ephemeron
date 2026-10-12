@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -180,12 +180,8 @@ func parseManifestTag(p string) (repo, tag string, ok bool) {
 	if !found {
 		return "", "", false
 	}
-	i := strings.LastIndex(rest, "/manifests/")
-	if i <= 0 {
-		return "", "", false
-	}
-	repo, tag = rest[:i], rest[i+len("/manifests/"):]
-	if tag == "" || strings.ContainsAny(tag, ":/") {
+	repo, tag, found = strings.CutLast(rest, "/manifests/")
+	if !found || repo == "" || tag == "" || strings.ContainsAny(tag, ":/") {
 		return "", "", false
 	}
 	return repo, tag, true
@@ -194,7 +190,7 @@ func parseManifestTag(p string) (repo, tag string, ok bool) {
 func writeError(w http.ResponseWriter, status int, code, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	_ = json.MarshalWrite(w, map[string]any{
 		"errors": []map[string]string{{"code": code, "message": msg}},
 	})
 }
