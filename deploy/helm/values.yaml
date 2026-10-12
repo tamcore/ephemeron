@@ -23,9 +23,11 @@ manager:
     reapInterval: "1m"
     # -- Log format: "json" or "text"
     logFormat: "json"
-    # -- Immutable tag patterns (glob patterns, comma-separated). Tags matching these patterns
-    # will reject overwrites with HTTP 503. Empty = observability mode only (log + metrics).
-    # Examples: "prod-*,release-*,v[0-9]*" or "stable,main"
+    # -- Immutable tag patterns (glob patterns, comma-separated). When set, a proxy sidecar
+    # runs in the registry pod and Ingress/HTTPRoute target it. The proxy rejects manifest
+    # pushes that move a matching tag to a different digest (HTTP 403) and denies /v2/_catalog.
+    # Empty = no proxy; overwrites are only logged and counted by the manager.
+    # Examples: "*", "prod-*,release-*,v[0-9]*" or "stable,main"
     immutableTagPatterns: ""
   metrics:
     serviceMonitor:

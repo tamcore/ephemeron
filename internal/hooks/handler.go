@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/tamcore/ephemeron/internal/metrics"
@@ -42,13 +41,12 @@ type registryClient interface {
 
 // Handler handles incoming registry webhook events.
 type Handler struct {
-	redis                redisclient.Store
-	registry             registryClient
-	hookToken            string
-	defaultTTL           time.Duration
-	maxTTL               time.Duration
-	logger               *slog.Logger
-	immutableTagPatterns []string
+	redis      redisclient.Store
+	registry   registryClient
+	hookToken  string
+	defaultTTL time.Duration
+	maxTTL     time.Duration
+	logger     *slog.Logger
 }
 
 // NewHandler creates a new webhook handler.
@@ -57,17 +55,15 @@ func NewHandler(
 	registry registryClient,
 	hookToken string,
 	defaultTTL, maxTTL time.Duration,
-	immutableTagPatterns []string,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		redis:                redis,
-		registry:             registry,
-		hookToken:            hookToken,
-		defaultTTL:           defaultTTL,
-		maxTTL:               maxTTL,
-		immutableTagPatterns: immutableTagPatterns,
-		logger:               logger,
+		redis:      redis,
+		registry:   registry,
+		hookToken:  hookToken,
+		defaultTTL: defaultTTL,
+		maxTTL:     maxTTL,
+		logger:     logger,
 	}
 }
 
@@ -144,12 +140,8 @@ func (h *Handler) handlePush(ctx context.Context, repo, tag string) error {
 		digest = manifestInfo.Digest
 	}
 
-	// Detect tag overwrite (may block webhook in enforcement mode)
 	if digest != "" {
-		if err := h.detectOverwrite(ctx, imageWithTag, repo, tag, digest); err != nil {
-			// Error means overwrite blocked (enforcement mode)
-			return err
-		}
+		h.detectOverwrite(ctx, imageWithTag, repo, digest)
 	}
 
 	sizeMB := float64(sizeBytes) / (1024 * 1024)
@@ -174,26 +166,25 @@ func (h *Handler) handlePush(ctx context.Context, repo, tag string) error {
 	return nil
 }
 
-// detectOverwrite checks if tag push overwrites existing content with different digest.
-// Returns error if overwrite should be blocked (enforcement mode), nil otherwise.
-func (h *Handler) detectOverwrite(ctx context.Context, imageWithTag, repo, tag, newDigest string) error {
+// detectOverwrite logs and counts pushes that change the digest of a tracked tag.
+func (h *Handler) detectOverwrite(ctx context.Context, imageWithTag, repo, newDigest string) {
 	existingDigest, err := h.redis.GetImageDigest(ctx, imageWithTag)
 	if err != nil {
 		h.logger.Warn("failed to check existing digest (non-critical)",
 			"image", imageWithTag,
 			"error", err,
 		)
-		return nil // Best effort: continue on error
+		return
 	}
 
 	// No existing digest = first push or old record (backward compatible)
 	if existingDigest == "" {
-		return nil
+		return
 	}
 
 	// Same digest = re-push of same content (no-op)
 	if existingDigest == newDigest {
-		return nil
+		return
 	}
 
 	// Different digest = overwrite detected!
@@ -210,36 +201,4 @@ func (h *Handler) detectOverwrite(ctx context.Context, imageWithTag, repo, tag, 
 		ageSeconds := time.Since(time.UnixMilli(createdMillis)).Seconds()
 		metrics.OverwrittenImageAge.Observe(ageSeconds)
 	}
-
-	// Check if tag matches immutable patterns (enforcement mode)
-	if h.isImmutableTag(tag) {
-		h.logger.Error("immutable tag overwrite rejected",
-			"image", imageWithTag,
-			"tag", tag,
-			"old_digest", existingDigest,
-			"new_digest", newDigest,
-		)
-		metrics.ImmutableTagViolations.WithLabelValues(repo, tag).Inc()
-		return fmt.Errorf("tag %s is immutable, overwrite rejected", tag)
-	}
-
-	return nil // Observability mode: log but allow
-}
-
-// isImmutableTag checks if tag matches any immutable patterns.
-func (h *Handler) isImmutableTag(tag string) bool {
-	for _, pattern := range h.immutableTagPatterns {
-		matched, err := filepath.Match(pattern, tag)
-		if err != nil {
-			h.logger.Warn("invalid immutable tag pattern",
-				"pattern", pattern,
-				"error", err,
-			)
-			continue
-		}
-		if matched {
-			return true
-		}
-	}
-	return false
 }

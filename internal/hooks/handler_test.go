@@ -14,14 +14,13 @@ import (
 )
 
 const (
-	testApp        = "myapp"
-	testAppTTL     = "myapp:1h"
-	testAppProdTTL = "myapp:prod-1h"
-	testPush       = "push"
+	testApp    = "myapp"
+	testAppTTL = "myapp:1h"
+	testPush   = "push"
 )
 
 func TestHandler_Auth(t *testing.T) {
-	handler := NewHandler(nil, nil, "test-token", 0, 0, nil, slog.Default())
+	handler := NewHandler(nil, nil, "test-token", 0, 0, slog.Default())
 
 	tests := []struct {
 		name     string
@@ -67,7 +66,7 @@ func TestHandler_EventParsing(t *testing.T) {
 	// so we just test the auth + decode path).
 
 	t.Run("rejects invalid json", func(t *testing.T) {
-		handler := NewHandler(nil, nil, "tok", 0, 0, nil, slog.Default())
+		handler := NewHandler(nil, nil, "tok", 0, 0, slog.Default())
 		req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader([]byte("not json")))
 		req.Header.Set("Authorization", "Token tok")
 		rr := httptest.NewRecorder()
@@ -78,7 +77,7 @@ func TestHandler_EventParsing(t *testing.T) {
 	})
 
 	t.Run("accepts empty events", func(t *testing.T) {
-		handler := NewHandler(nil, nil, "tok", 0, 0, nil, slog.Default())
+		handler := NewHandler(nil, nil, "tok", 0, 0, slog.Default())
 		body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
 		req.Header.Set("Authorization", "Token tok")
@@ -90,7 +89,7 @@ func TestHandler_EventParsing(t *testing.T) {
 	})
 
 	t.Run("skips non-push events", func(t *testing.T) {
-		handler := NewHandler(nil, nil, "tok", 0, 0, nil, slog.Default())
+		handler := NewHandler(nil, nil, "tok", 0, 0, slog.Default())
 		body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 			{Action: "pull", Target: EventTarget{Repository: "foo", Tag: "1h"}},
 		}})
@@ -104,7 +103,7 @@ func TestHandler_EventParsing(t *testing.T) {
 	})
 
 	t.Run("skips events with empty repo or tag", func(t *testing.T) {
-		handler := NewHandler(nil, nil, "tok", 0, 0, nil, slog.Default())
+		handler := NewHandler(nil, nil, "tok", 0, 0, slog.Default())
 		body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 			{Action: testPush, Target: EventTarget{Repository: "", Tag: "1h"}},
 			{Action: testPush, Target: EventTarget{Repository: "foo", Tag: ""}},
@@ -207,7 +206,7 @@ func TestHandler_SizeTracking_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
+	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
@@ -238,7 +237,7 @@ func TestHandler_SizeTracking_FetchError(t *testing.T) {
 		err: http.ErrHandlerTimeout,
 	}
 
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
+	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
@@ -272,7 +271,7 @@ func TestDetectOverwrite_FirstPush(t *testing.T) {
 		digests: map[string]string{testAppTTL: "sha256:new123"},
 	}
 
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
+	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
@@ -305,7 +304,7 @@ func TestDetectOverwrite_SameDigest(t *testing.T) {
 	store.digests[testAppTTL] = "sha256:same123"
 	store.created[testAppTTL] = time.Now().UnixMilli()
 
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
+	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
@@ -323,7 +322,7 @@ func TestDetectOverwrite_SameDigest(t *testing.T) {
 	}
 }
 
-func TestDetectOverwrite_DifferentDigest_Observability(t *testing.T) {
+func TestDetectOverwrite_DifferentDigest(t *testing.T) {
 	store := newMockStore()
 	registry := &mockRegistry{
 		sizes:   map[string]int64{testAppTTL: 100000},
@@ -334,8 +333,7 @@ func TestDetectOverwrite_DifferentDigest_Observability(t *testing.T) {
 	store.digests[testAppTTL] = "sha256:old123"
 	store.created[testAppTTL] = time.Now().Add(-10 * time.Minute).UnixMilli()
 
-	// No immutable patterns = observability mode only
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
+	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, slog.Default())
 
 	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
 		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h"}},
@@ -347,99 +345,12 @@ func TestDetectOverwrite_DifferentDigest_Observability(t *testing.T) {
 
 	handler.ServeHTTP(rr, req)
 
-	// Should succeed despite overwrite (observability mode)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 in observability mode, got %d", rr.Code)
+		t.Fatalf("expected 200 on overwrite, got %d", rr.Code)
 	}
 
 	// New digest should be stored
 	if store.digests[testAppTTL] != "sha256:new456" {
 		t.Fatalf("expected new digest to be stored, got %s", store.digests[testAppTTL])
-	}
-}
-
-func TestDetectOverwrite_DifferentDigest_Enforcement(t *testing.T) {
-	store := newMockStore()
-	registry := &mockRegistry{
-		sizes:   map[string]int64{testAppProdTTL: 100000},
-		digests: map[string]string{testAppProdTTL: "sha256:new789"},
-	}
-
-	// Pre-populate with different existing digest
-	store.digests[testAppProdTTL] = "sha256:old456"
-	store.created[testAppProdTTL] = time.Now().Add(-5 * time.Minute).UnixMilli()
-
-	// Set immutable pattern that matches "prod-*"
-	handler := NewHandler(store, registry, "tok", time.Hour, 24*time.Hour, []string{"prod-*"}, slog.Default())
-
-	body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
-		{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "prod-1h"}},
-	}})
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
-	req.Header.Set("Authorization", "Token tok")
-	rr := httptest.NewRecorder()
-
-	handler.ServeHTTP(rr, req)
-
-	// Should fail - enforcement mode blocks overwrite
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 for immutable tag overwrite, got %d", rr.Code)
-	}
-
-	// Old digest should still be in store (webhook failed before tracking)
-	if store.digests[testAppProdTTL] != "sha256:old456" {
-		t.Fatalf("expected old digest to remain, got %s", store.digests[testAppProdTTL])
-	}
-}
-
-func TestIsImmutableTag_Matches(t *testing.T) {
-	handler := NewHandler(
-		nil, nil, "tok", time.Hour, 24*time.Hour,
-		[]string{"prod-*", "release-*", "v[0-9]*"},
-		slog.Default(),
-	)
-
-	tests := []struct {
-		tag      string
-		expected bool
-	}{
-		{"prod-1h", true},
-		{"prod-latest", true},
-		{"release-1.0", true},
-		{"v1", true},
-		{"v123", true},
-		{"dev-1h", false},
-		{"test", false},
-		{"latest", false},
-		{"1h", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.tag, func(t *testing.T) {
-			result := handler.isImmutableTag(tt.tag)
-			if result != tt.expected {
-				t.Errorf("tag %s: expected %v, got %v", tt.tag, tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestIsImmutableTag_NoPatterns(t *testing.T) {
-	handler := NewHandler(nil, nil, "tok", time.Hour, 24*time.Hour, nil, slog.Default())
-
-	// No patterns = nothing is immutable
-	if handler.isImmutableTag("prod-1h") {
-		t.Error("expected false when no patterns configured")
-	}
-}
-
-func TestIsImmutableTag_InvalidPattern(t *testing.T) {
-	// Invalid glob pattern should be skipped
-	handler := NewHandler(nil, nil, "tok", time.Hour, 24*time.Hour, []string{"[invalid"}, slog.Default())
-
-	// Should return false (pattern error is logged and skipped)
-	if handler.isImmutableTag("test") {
-		t.Error("expected false for invalid pattern")
 	}
 }

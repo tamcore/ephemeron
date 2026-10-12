@@ -4,8 +4,9 @@
 # Override default values to enable tag immutability enforcement
 manager:
   env:
-    # Enable enforcement mode: block overwrites for production and release tags
-    # Patterns use glob syntax (https://pkg.go.dev/path/filepath#Match)
+    # Runs the immutability proxy as a registry sidecar. Pushes that move a matching
+    # tag to a different digest are rejected with HTTP 403.
+    # Patterns use glob syntax (https://pkg.go.dev/path#Match)
     immutableTagPatterns: "prod-*,release-*,v[0-9]*,stable,latest"
 
     # Other standard settings
@@ -14,7 +15,7 @@ manager:
     reapInterval: "1m"
     logFormat: "json"
 
-  # Optional: Enable Prometheus ServiceMonitor for immutability metrics
+  # Optional: Enable Prometheus ServiceMonitor for overwrite detection metrics
   metrics:
     serviceMonitor:
       enabled: true

@@ -49,6 +49,45 @@ spec:
             - name: data
               mountPath: /var/lib/registry
             {{- end }}
+        {{- with .Values.manager.env.immutableTagPatterns }}
+        - name: proxy
+          image: {{ include "ephemeron.manager.image" $ }}
+          args: ["proxy"]
+          {{- with $.Values.manager.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.Values.manager.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: IMMUTABLE_TAG_PATTERNS
+              value: {{ . | quote }}
+            - name: REGISTRY_URL
+              value: http://localhost:5000
+            - name: PORT
+              value: "5080"
+            - name: INTERNAL_PORT
+              value: "9090"
+            - name: LOG_FORMAT
+              value: {{ $.Values.manager.env.logFormat | default "json" | quote }}
+          ports:
+            - containerPort: 5080
+              name: proxy
+            - containerPort: 9090
+              name: proxy-internal
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: proxy-internal
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: proxy-internal
+            periodSeconds: 5
+        {{- end }}
       volumes:
         - name: config
           secret:

@@ -128,11 +128,11 @@ var (
 		Help:      "Total failures fetching digest from registry.",
 	})
 
-	// ImmutableTagViolations counts blocked overwrites in enforcement mode.
+	// ImmutableTagViolations counts overwrites rejected by the proxy.
 	ImmutableTagViolations = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: nsEphemeron,
 		Subsystem: subsImmutable,
 		Name:      "immutable_tag_violations_total",
-		Help:      "Total overwrite attempts blocked by immutability enforcement.",
+		Help:      "Total manifest pushes rejected by the immutability proxy.",
 	}, []string{"repository", "tag"})
 )

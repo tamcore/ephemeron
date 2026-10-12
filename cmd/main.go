@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/tamcore/ephemeron/internal/config"
 	"github.com/tamcore/ephemeron/internal/health"
 	"github.com/tamcore/ephemeron/internal/hooks"
+	"github.com/tamcore/ephemeron/internal/proxy"
 	"github.com/tamcore/ephemeron/internal/reaper"
 	recoverlib "github.com/tamcore/ephemeron/internal/recover"
 	redisclient "github.com/tamcore/ephemeron/internal/redis"
@@ -38,6 +40,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(serveCmd())
+	rootCmd.AddCommand(proxyCmd())
 	rootCmd.AddCommand(reapCmd())
 	rootCmd.AddCommand(recoverCmd())
 	rootCmd.AddCommand(versionCmd())
@@ -59,7 +62,6 @@ func newConfig(logger *slog.Logger) *config.Config {
 		MaxTTL:                 envDuration(logger, "MAX_TTL", 24*time.Hour),
 		ReapInterval:           envDuration(logger, "REAP_INTERVAL", time.Minute),
 		LogFormat:              envStr("LOG_FORMAT", "json"),
-		ImmutableTagPatterns:   envStrSlice("IMMUTABLE_TAG_PATTERNS", nil),
 		HealthFailureThreshold: envInt(logger, "HEALTH_FAILURE_THRESHOLD", 3),
 	}
 }
@@ -116,7 +118,6 @@ func serveCmd() *cobra.Command {
 
 			hookHandler := hooks.NewHandler(
 				rdb, reg, cfg.HookToken, cfg.DefaultTTL, cfg.MaxTTL,
-				cfg.ImmutableTagPatterns,
 				logger.With("component", "hooks"),
 			)
 			mux.Handle("POST /v1/hook/registry-event", hookHandler)
@@ -210,6 +211,58 @@ func runServers(
 	// wait for the shutdown goroutine to finish draining both servers.
 	<-shutdownDone
 	return nil
+}
+
+func proxyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "proxy",
+		Short: "Start the registry proxy that enforces tag immutability",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			logger := setupLogger(envStr("LOG_FORMAT", "json"))
+
+			patterns := envStrSlice("IMMUTABLE_TAG_PATTERNS", nil)
+			if err := proxy.ValidatePatterns(patterns); err != nil {
+				return err
+			}
+			upstream, err := url.Parse(envStr("REGISTRY_URL", "http://localhost:5000"))
+			if err != nil {
+				return fmt.Errorf("parsing REGISTRY_URL: %w", err)
+			}
+			port := envInt(logger, "PORT", 5080)
+			internalPort := envInt(logger, "INTERNAL_PORT", 9090)
+
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+			defer cancel()
+
+			internalMux := http.NewServeMux()
+			internalMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			})
+			internalMux.Handle("GET /metrics", promhttp.Handler())
+
+			// No read/write timeouts: blob uploads can take long.
+			srv := &http.Server{
+				Handler:           proxy.New(upstream, patterns, logger.With("component", "proxy")),
+				ReadHeaderTimeout: 5 * time.Second,
+			}
+			internalSrv := &http.Server{
+				Handler:           internalMux,
+				ReadHeaderTimeout: 5 * time.Second,
+			}
+
+			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			if err != nil {
+				return fmt.Errorf("listening on port %d: %w", port, err)
+			}
+			internalLn, err := net.Listen("tcp", fmt.Sprintf(":%d", internalPort))
+			if err != nil {
+				return fmt.Errorf("listening on internal port %d: %w", internalPort, err)
+			}
+
+			logger.Info("proxying registry", "upstream", upstream.String(), "patterns", patterns)
+			return runServers(ctx, logger, srv, internalSrv, ln, internalLn)
+		},
+	}
 }
 
 func reapCmd() *cobra.Command {

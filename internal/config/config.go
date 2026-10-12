@@ -37,10 +37,6 @@ type Config struct {
 	// LogFormat controls log output: "json" or "text".
 	LogFormat string
 
-	// ImmutableTagPatterns are glob patterns for tags that cannot be overwritten.
-	// Empty list = observability mode only (default). Example: ["prod-*", "release-*"]
-	ImmutableTagPatterns []string
-
 	// HealthFailureThreshold is the number of consecutive all-failed reap cycles
 	// before the liveness probe reports unhealthy.
 	HealthFailureThreshold int

@@ -22,7 +22,7 @@ spec:
               service:
                 name: {{ include "ephemeron.registry.fullname" . }}
                 port:
-                  number: 5000
+                  number: {{ include "ephemeron.registry.publicPort" . }}
             path: /v2
             pathType: Prefix
   tls:

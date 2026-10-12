@@ -323,6 +323,16 @@ Accept: application/vnd.oci.image.manifest.v1+json,
 
 **Pagination**: Follows `Link: </v2/_catalog?n=1000&last=repo>; rel="next"` headers.
 
+### 6a. Immutability Proxy (`internal/proxy/proxy.go`)
+
+Reverse proxy started with `ephemeron proxy`. The Helm chart runs it as a sidecar in the registry pod when `IMMUTABLE_TAG_PATTERNS` is set. Ingress/HTTPRoute target it, and the manager keeps using the registry port directly.
+
+- `PUT /v2/<repo>/manifests/<tag>` with a tag that matches a pattern: buffers the manifest (max 4 MiB, else 413), computes its sha256, and sends HEAD for the tag to the registry. A different existing digest gives 403 `DENIED`. A missing tag or the same digest is forwarded. A failed HEAD gives 503.
+- `/v2/_catalog`: 403.
+- All other requests stream through. `Host` and inbound `X-Forwarded-*` are kept so that the registry builds correct upload `Location` URLs.
+
+Enforcement must happen here, because registry notifications are sent after the manifest is committed.
+
 ### 7. Web Handler (`internal/web/handler.go`)
 
 Serves a landing page at `GET /` with:
@@ -349,7 +359,6 @@ All configuration via environment variables:
 | `MAX_TTL` | `24h` | No | Maximum allowed TTL |
 | `REAP_INTERVAL` | `1m` | No | Reaper check frequency |
 | `LOG_FORMAT` | `json` | No | Log format (`json` or `text`) |
-| `IMMUTABLE_TAG_PATTERNS` | - | No | Comma-separated glob patterns for immutable tags |
 
 Validation ensures:
 - Required fields are present
@@ -369,7 +378,7 @@ Prometheus metrics exposed at `GET /metrics` (internal port):
 - `ephemeron_storage_bytes_reclaimed_total` - Total storage reclaimed by deletion
 - `ephemeron_immutability_tag_overwrites_total{repository}` - Total tag overwrites detected
 - `ephemeron_immutability_digest_fetch_errors_total` - Total digest fetch failures
-- `ephemeron_immutability_immutable_tag_violations_total{repository,tag}` - Blocked overwrites (enforcement mode)
+- `ephemeron_immutability_immutable_tag_violations_total{repository,tag}` - Overwrites rejected by the `proxy` command
 
 #### Gauges
 - `ephemeron_reaper_tracked_images` - Current number of tracked images
