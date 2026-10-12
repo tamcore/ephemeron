@@ -20,8 +20,9 @@ spec:
                 name: {{ include "ephemeron.manager.fullname" . }}
                 port:
                   number: 8000
+            # Only the landing page is public; the webhook stays in-cluster.
             path: /
-            pathType: Prefix
+            pathType: Exact
   tls:
     - hosts:
         - {{ .Values.ingress.host }}
