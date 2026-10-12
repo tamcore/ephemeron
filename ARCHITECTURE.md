@@ -655,6 +655,8 @@ defer redis.Del("reaper.lock")
 
 **Best practices**:
 - Use strong random token for `HOOK_TOKEN`
+- The Helm chart exposes only `GET /` of the manager publicly. The webhook is reachable only in-cluster.
+- distribution logs the endpoint headers at startup, so `HOOK_TOKEN` appears in plain text in the registry logs. Treat registry logs as sensitive, or rotate the token if they are shipped where others can read them.
 - Run Ephemeron in same network as registry
 - Use network policies to restrict registry API access
 
