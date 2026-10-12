@@ -20,19 +20,13 @@ import (
 	"time"
 
 	"github.com/tamcore/ephemeron/internal/metrics"
+	"github.com/tamcore/ephemeron/internal/registry"
 )
 
 // maxManifestBytes matches the manifest size limit of distribution.
 const maxManifestBytes = 4 << 20
 
 const headTimeout = 10 * time.Second
-
-var manifestAccept = strings.Join([]string{
-	"application/vnd.oci.image.manifest.v1+json",
-	"application/vnd.oci.image.index.v1+json",
-	"application/vnd.docker.distribution.manifest.v2+json",
-	"application/vnd.docker.distribution.manifest.list.v2+json",
-}, ",")
 
 var forwardedHeaders = []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"}
 
@@ -139,7 +133,7 @@ func (h *Handler) existingDigest(ctx context.Context, repo, tag, auth string) (s
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Accept", manifestAccept)
+	req.Header.Set("Accept", registry.ManifestAccept)
 	if auth != "" {
 		req.Header.Set("Authorization", auth)
 	}

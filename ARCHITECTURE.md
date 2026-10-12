@@ -314,12 +314,12 @@ GET /v2/{repo}/tags/list?n=1000
 → {"name": "repo", "tags": ["tag1", "tag2", ...]}
 ```
 
-**Get Image Size**
+**Get Manifest Info (digest + size)**
 ```
-GET /v2/{repo}/manifests/{tag}
-Accept: application/vnd.oci.image.manifest.v1+json,
-        application/vnd.docker.distribution.manifest.v2+json
-→ Parses manifest JSON and sums config.size + all layers[].size
+GET /v2/{repo}/manifests/{tag-or-digest}
+Accept: OCI manifest/index, Docker manifest v2/manifest list
+→ Digest from Docker-Content-Digest; size = config.size + all layers[].size
+→ For an index/manifest list: GET each manifests[].digest and sum their sizes
 ```
 
 **Pagination**: Follows `Link: </v2/_catalog?n=1000&last=repo>; rel="next"` headers.

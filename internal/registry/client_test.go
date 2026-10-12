@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -167,86 +168,6 @@ func TestListRepositories_PaginationRunaway(t *testing.T) {
 	}
 }
 
-func TestGetImageSize_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v2/myapp/manifests/1h" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodGet {
-			t.Fatalf("expected GET, got %s", r.Method)
-		}
-		manifest := ManifestV2{
-			SchemaVersion: 2,
-			Config:        ManifestConfig{Size: 1000},
-			Layers: []ManifestLayer{
-				{Size: 5000},
-				{Size: 10000},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL)
-	size, err := c.GetImageSize(context.Background(), "myapp", "1h")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	expected := int64(1000 + 5000 + 10000)
-	if size != expected {
-		t.Fatalf("expected size %d, got %d", expected, size)
-	}
-}
-
-func TestGetImageSize_EmptyLayers(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		manifest := ManifestV2{
-			SchemaVersion: 2,
-			Config:        ManifestConfig{Size: 500},
-			Layers:        []ManifestLayer{},
-		}
-		_ = json.NewEncoder(w).Encode(manifest)
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL)
-	size, err := c.GetImageSize(context.Background(), "myapp", "empty")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if size != 500 {
-		t.Fatalf("expected size 500, got %d", size)
-	}
-}
-
-func TestGetImageSize_404(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL)
-	_, err := c.GetImageSize(context.Background(), "myapp", "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for 404, got nil")
-	}
-}
-
-func TestGetImageSize_InvalidJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("not json"))
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL)
-	_, err := c.GetImageSize(context.Background(), "myapp", "bad")
-	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-}
-
 func TestGetImageManifestInfo_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/myapp/manifests/1h" {
@@ -343,5 +264,57 @@ func TestGetImageManifestInfo_InvalidJSON(t *testing.T) {
 	_, err := c.GetImageManifestInfo(context.Background(), "myapp", "bad")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestGetImageManifestInfo_Index(t *testing.T) {
+	children := map[string]ManifestV2{
+		"sha256:amd64": {Config: ManifestConfig{Size: 100}, Layers: []ManifestLayer{{Size: 1000}}},
+		"sha256:arm64": {Config: ManifestConfig{Size: 200}, Layers: []ManifestLayer{{Size: 2000}, {Size: 3000}}},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ref := strings.TrimPrefix(r.URL.Path, "/v2/myapp/manifests/")
+		if ref == "multi-1h" {
+			w.Header().Set("Docker-Content-Digest", "sha256:index")
+			_ = json.NewEncoder(w).Encode(ManifestV2{
+				SchemaVersion: 2,
+				Manifests:     []ManifestDescriptor{{Digest: "sha256:amd64"}, {Digest: "sha256:arm64"}},
+			})
+			return
+		}
+		child, ok := children[ref]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(child)
+	}))
+	defer srv.Close()
+
+	info, err := New(srv.URL).GetImageManifestInfo(context.Background(), "myapp", "multi-1h")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info.Digest != "sha256:index" {
+		t.Fatalf("digest = %s, want sha256:index", info.Digest)
+	}
+	if want := int64(100 + 1000 + 200 + 2000 + 3000); info.SizeBytes != want {
+		t.Fatalf("size = %d, want %d", info.SizeBytes, want)
+	}
+}
+
+func TestGetImageManifestInfo_IndexChildMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/multi-1h") {
+			_ = json.NewEncoder(w).Encode(ManifestV2{Manifests: []ManifestDescriptor{{Digest: "sha256:gone"}}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	if _, err := New(srv.URL).GetImageManifestInfo(context.Background(), "myapp", "multi-1h"); err == nil {
+		t.Fatal("expected error for missing child manifest")
 	}
 }
