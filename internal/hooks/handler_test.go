@@ -176,14 +176,6 @@ type mockRegistry struct {
 	err     error
 }
 
-func (m *mockRegistry) GetImageSize(_ context.Context, repo, tag string) (int64, error) {
-	if m.err != nil {
-		return 0, m.err
-	}
-	key := repo + ":" + tag
-	return m.sizes[key], nil
-}
-
 func (m *mockRegistry) GetImageManifestInfo(_ context.Context, repo, tag string) (*registry.ManifestInfo, error) {
 	if m.err != nil {
 		return nil, m.err

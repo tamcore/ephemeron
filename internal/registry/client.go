@@ -35,11 +35,33 @@ type tagsResponse struct {
 	Tags []string `json:"tags"`
 }
 
-// ManifestV2 represents an OCI/Docker image manifest v2.
+// ManifestAccept lists the manifest media types the registry stores.
+var ManifestAccept = strings.Join([]string{
+	"application/vnd.oci.image.manifest.v1+json",
+	"application/vnd.oci.image.index.v1+json",
+	"application/vnd.docker.distribution.manifest.v2+json",
+	"application/vnd.docker.distribution.manifest.list.v2+json",
+}, ",")
+
+// ManifestV2 represents an OCI/Docker image manifest, index or manifest list.
 type ManifestV2 struct {
-	SchemaVersion int             `json:"schemaVersion"`
-	Config        ManifestConfig  `json:"config"`
-	Layers        []ManifestLayer `json:"layers"`
+	SchemaVersion int                  `json:"schemaVersion"`
+	Config        ManifestConfig       `json:"config"`
+	Layers        []ManifestLayer      `json:"layers"`
+	Manifests     []ManifestDescriptor `json:"manifests"`
+}
+
+// ManifestDescriptor references a child manifest of an index.
+type ManifestDescriptor struct {
+	Digest string `json:"digest"`
+}
+
+func (m ManifestV2) imageSize() int64 {
+	size := m.Config.Size
+	for _, layer := range m.Layers {
+		size += layer.Size
+	}
+	return size
 }
 
 // ManifestConfig contains the image configuration descriptor.
@@ -136,89 +158,55 @@ func (c *Client) ListTags(ctx context.Context, repo string) ([]string, error) {
 	return all, nil
 }
 
-// GetImageSize fetches the total size of an image by fetching its manifest
-// and summing the config size and all layer sizes.
-func (c *Client) GetImageSize(ctx context.Context, repo, tag string) (int64, error) {
-	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL, repo, tag)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// GetImageManifestInfo fetches the digest and total size of an image.
+// For an index or manifest list, the size is the sum over all child manifests.
+func (c *Client) GetImageManifestInfo(ctx context.Context, repo, ref string) (*ManifestInfo, error) {
+	manifest, digest, err := c.getManifest(ctx, repo, ref)
 	if err != nil {
-		return 0, fmt.Errorf("creating manifest request: %w", err)
+		return nil, err
 	}
 
-	// Accept both OCI and Docker manifest formats
-	req.Header.Set("Accept",
-		"application/vnd.oci.image.manifest.v1+json,"+
-			"application/vnd.docker.distribution.manifest.v2+json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("fetching manifest for %s:%s: %w", repo, tag, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("manifest request failed for %s:%s: status %d", repo, tag, resp.StatusCode)
+	size := manifest.imageSize()
+	for _, child := range manifest.Manifests {
+		childManifest, _, err := c.getManifest(ctx, repo, child.Digest)
+		if err != nil {
+			return nil, err
+		}
+		size += childManifest.imageSize()
 	}
 
-	var manifest ManifestV2
-	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
-		return 0, fmt.Errorf("decoding manifest for %s:%s: %w", repo, tag, err)
-	}
-
-	// Sum config size + all layer sizes
-	totalSize := manifest.Config.Size
-	for _, layer := range manifest.Layers {
-		totalSize += layer.Size
-	}
-
-	return totalSize, nil
+	return &ManifestInfo{Digest: digest, SizeBytes: size}, nil
 }
 
-// GetImageManifestInfo fetches both the digest and size of an image manifest.
-// This is more efficient than separate method calls since it uses a single HTTP request.
-func (c *Client) GetImageManifestInfo(ctx context.Context, repo, tag string) (*ManifestInfo, error) {
-	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL, repo, tag)
+func (c *Client) getManifest(ctx context.Context, repo, ref string) (ManifestV2, string, error) {
+	var manifest ManifestV2
+	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL, repo, ref)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating manifest request: %w", err)
+		return manifest, "", fmt.Errorf("creating manifest request: %w", err)
 	}
-
-	req.Header.Set("Accept",
-		"application/vnd.oci.image.manifest.v1+json,"+
-			"application/vnd.docker.distribution.manifest.v2+json")
+	req.Header.Set("Accept", ManifestAccept)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching manifest for %s:%s: %w", repo, tag, err)
+		return manifest, "", fmt.Errorf("fetching manifest for %s:%s: %w", repo, ref, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("manifest request failed for %s:%s: status %d", repo, tag, resp.StatusCode)
+		return manifest, "", fmt.Errorf("manifest request failed for %s:%s: status %d", repo, ref, resp.StatusCode)
 	}
 
-	// Extract digest from header
 	digest := resp.Header.Get("Docker-Content-Digest")
 	if digest == "" {
 		digest = strings.Trim(resp.Header.Get("ETag"), `"`)
 	}
 
-	var manifest ManifestV2
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("decoding manifest for %s:%s: %w", repo, tag, err)
+		return manifest, "", fmt.Errorf("decoding manifest for %s:%s: %w", repo, ref, err)
 	}
-
-	totalSize := manifest.Config.Size
-	for _, layer := range manifest.Layers {
-		totalSize += layer.Size
-	}
-
-	return &ManifestInfo{
-		Digest:    digest,
-		SizeBytes: totalSize,
-	}, nil
+	return manifest, digest, nil
 }
 
 // nextLink parses the Link header for pagination.

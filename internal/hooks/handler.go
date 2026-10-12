@@ -37,7 +37,6 @@ type EventEnvelope struct {
 
 // registryClient is the subset of registry operations needed by the handler.
 type registryClient interface {
-	GetImageSize(ctx context.Context, repo, tag string) (int64, error)
 	GetImageManifestInfo(ctx context.Context, repo, tag string) (*registry.ManifestInfo, error)
 }
 
