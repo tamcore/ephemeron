@@ -43,6 +43,7 @@ bin/ephemeron serve
 | Command   | Description                                                  |
 |-----------|--------------------------------------------------------------|
 | `serve`   | Start the webhook server, reaper loop, and landing page      |
+| `proxy`   | Start the registry proxy that enforces tag immutability      |
 | `reap`    | Run a single reap cycle (useful for CronJobs)                |
 | `recover` | Re-populate Redis by scanning the registry catalog           |
 | `version` | Print version and commit info                                |
@@ -63,29 +64,38 @@ All configuration is done via environment variables.
 | `MAX_TTL`                  | `24h`                    | Maximum allowed TTL                               |
 | `REAP_INTERVAL`            | `1m`                     | How often the reaper checks for expiries          |
 | `LOG_FORMAT`               | `json`                   | Log format (`json` or `text`)                     |
-| `IMMUTABLE_TAG_PATTERNS`   | *(empty)*                | Comma-separated glob patterns for immutable tags  |
 
 `REDISCLOUD_URL` is also supported as an alias for `REDIS_URL`.
 
-### Tag Immutability Detection
+### Tag Immutability
 
-Ephemeron can detect and optionally enforce tag immutability — preventing the same tag from being pushed with different content.
+**Detection (always on):** The manager logs every tag overwrite (same tag, different digest) and counts it in Prometheus metrics. Registry notifications arrive after the push is committed, so the manager cannot block an overwrite.
 
-**Observability mode (default):** When `IMMUTABLE_TAG_PATTERNS` is empty or unset, all tag overwrites are logged and tracked via Prometheus metrics, but none are blocked.
+**Enforcement (`proxy` command):** The proxy runs in front of the registry and rejects a manifest push with HTTP 403 `DENIED` when the tag matches an immutable pattern and already points to a different digest. A re-push of the same digest passes. The proxy also denies `/v2/_catalog`. All other requests, including blob uploads, stream through unchanged.
 
-**Enforcement mode:** Set `IMMUTABLE_TAG_PATTERNS` to a comma-separated list of glob patterns. Tags matching these patterns will reject overwrites with HTTP 503, causing the registry to retry.
+| Variable                 | Default                 | Description                                         |
+|--------------------------|-------------------------|-----------------------------------------------------|
+| `IMMUTABLE_TAG_PATTERNS` | *(required)*            | Comma-separated glob patterns (`path.Match` syntax) |
+| `REGISTRY_URL`           | `http://localhost:5000` | Upstream registry                                   |
+| `PORT`                   | `5080`                  | Proxy port                                          |
+| `INTERNAL_PORT`          | `9090`                  | Internal port (healthz, metrics)                    |
 
 ```bash
-# Examples
-export IMMUTABLE_TAG_PATTERNS="prod-*,release-*"        # Block overwrites for prod-* and release-* tags
-export IMMUTABLE_TAG_PATTERNS="v[0-9]*,stable,latest"  # Block semantic versions, stable, and latest
+export IMMUTABLE_TAG_PATTERNS="*"                  # Every tag is immutable
+export IMMUTABLE_TAG_PATTERNS="prod-*,release-*"   # Only prod-* and release-* tags
 ```
 
+The Helm chart runs the proxy as a sidecar in the registry pod and points Ingress/HTTPRoute at it when `manager.env.immutableTagPatterns` is set.
+
+Limits:
+- Two concurrent first pushes of the same tag can both pass the check. The last write wins.
+- If the existing-tag check fails (registry error), the push is rejected with HTTP 503.
+
 **Metrics available:**
-- `ephemeron_immutability_tag_overwrites_total` — Count of detected overwrites
-- `ephemeron_immutability_overwritten_image_age_seconds` — Age distribution of overwritten images
-- `ephemeron_immutability_digest_fetch_errors_total` — Digest fetch failures
-- `ephemeron_immutability_immutable_tag_violations_total` — Blocked overwrites (enforcement mode)
+- `ephemeron_immutability_tag_overwrites_total` — Count of detected overwrites (manager)
+- `ephemeron_immutability_overwritten_image_age_seconds` — Age distribution of overwritten images (manager)
+- `ephemeron_immutability_digest_fetch_errors_total` — Digest fetch failures (manager)
+- `ephemeron_immutability_immutable_tag_violations_total` — Overwrites rejected by the proxy (proxy)
 
 ## Recovery
 

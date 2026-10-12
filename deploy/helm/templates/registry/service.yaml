@@ -12,3 +12,8 @@ spec:
     - port: 5000
       targetPort: registry
       name: registry
+    {{- if .Values.manager.env.immutableTagPatterns }}
+    - port: 5080
+      targetPort: proxy
+      name: proxy
+    {{- end }}

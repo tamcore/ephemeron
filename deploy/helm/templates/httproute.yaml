@@ -1,5 +1,7 @@
 {{- if .Values.httpRoute.enabled }}
 {{- $host := .Values.ingress.host }}
+{{- $proxy := .Values.manager.env.immutableTagPatterns }}
+{{- if not $proxy }}
 ---
 # SnippetsFilter — injects "return 403;" for /v2/_catalog to block registry catalog browsing.
 # Requires nginx-gateway-fabric or another NGF-compatible Gateway API implementation.
@@ -13,6 +15,7 @@ spec:
   snippets:
     - context: http.server.location
       value: "return 403;"
+{{- end }}
 ---
 # HTTPRoute for ephemeron-manager (web UI)
 apiVersion: gateway.networking.k8s.io/v1
@@ -65,6 +68,7 @@ spec:
     - {{ $host | quote }}
   {{- end }}
   rules:
+    {{- if not $proxy }}
     # Block /v2/_catalog (registry catalog browsing) — replaces server-snippet annotation
     - matches:
         - path:
@@ -76,7 +80,8 @@ spec:
             group: gateway.nginx.org
             kind: SnippetsFilter
             name: {{ include "ephemeron.fullname" . }}-deny-catalog
-    # Route all other /v2 paths to registry
+    {{- end }}
+    # Route /v2 to the registry, or to the immutability proxy when enabled
     - matches:
         - path:
             type: PathPrefix
@@ -85,6 +90,6 @@ spec:
         - name: {{ include "ephemeron.registry.fullname" . }}
           group: ""
           kind: Service
-          port: 5000
+          port: {{ include "ephemeron.registry.publicPort" . }}
           weight: 1
 {{- end }}

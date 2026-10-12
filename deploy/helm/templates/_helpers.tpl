@@ -85,3 +85,17 @@ app.kubernetes.io/name: {{ include "ephemeron.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: registry
 {{- end }}
+
+{{/*
+Manager image reference, also used by the registry proxy sidecar.
+*/}}
+{{- define "ephemeron.manager.image" -}}
+{{ .Values.manager.image.repository }}{{ if .Values.manager.image.digest }}@{{ .Values.manager.image.digest }}{{ else }}:{{ coalesce .Values.manager.image.tag .Chart.AppVersion }}{{ end }}
+{{- end }}
+
+{{/*
+Registry port that external traffic targets: the proxy when immutability is enforced.
+*/}}
+{{- define "ephemeron.registry.publicPort" -}}
+{{ if .Values.manager.env.immutableTagPatterns }}5080{{ else }}5000{{ end }}
+{{- end }}
