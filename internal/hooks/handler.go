@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/tamcore/ephemeron/internal/metrics"
@@ -16,6 +17,9 @@ import (
 )
 
 const actionPush = "push"
+
+// sizeFetchTimeout bounds the background manifest fetch; an index needs one GET per child.
+const sizeFetchTimeout = 30 * time.Second
 
 // RegistryEvent represents a single event from the Docker Registry webhook.
 type RegistryEvent struct {
@@ -48,6 +52,7 @@ type Handler struct {
 	defaultTTL time.Duration
 	maxTTL     time.Duration
 	logger     *slog.Logger
+	sizeFills  sync.WaitGroup
 }
 
 // NewHandler creates a new webhook handler.
@@ -91,7 +96,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	// The registry gives up after its notification timeout; finish tracking anyway.
+	ctx := context.WithoutCancel(r.Context())
 	for _, event := range envelope.Events {
 		metrics.WebhookEventsTotal.WithLabelValues(event.Action).Inc()
 
@@ -116,55 +122,65 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("{}"))
 }
 
+// handlePush tracks the image right away and fills in its size in the background,
+// so the response stays within the registry's notification timeout.
 func (h *Handler) handlePush(ctx context.Context, target EventTarget) error {
-	repo, tag := target.Repository, target.Tag
+	repo, tag, digest := target.Repository, target.Tag, target.Digest
 	imageWithTag := fmt.Sprintf("%s:%s", repo, tag)
 
 	ttl := ClampTTL(ParseTTL(tag), h.defaultTTL, h.maxTTL)
 	expiresAt := time.Now().Add(ttl)
 
-	// Fetch manifest info (digest + size) - best effort
-	var sizeBytes int64
-	digest := target.Digest
-
-	// The registry sends the event before it links the tag, so prefer the digest.
-	manifestInfo, err := h.registry.GetImageManifestInfo(ctx, repo, cmp.Or(target.Digest, tag))
-	if err != nil {
-		h.logger.Warn("failed to fetch manifest info",
-			"image", imageWithTag,
-			"digest", digest,
-			"error", err,
-		)
-		metrics.DigestFetchErrors.Inc()
-	} else {
-		sizeBytes = manifestInfo.SizeBytes
-		digest = cmp.Or(digest, manifestInfo.Digest)
-	}
-
 	if digest != "" {
 		h.detectOverwrite(ctx, imageWithTag, repo, digest)
 	}
-
-	sizeMB := float64(sizeBytes) / (1024 * 1024)
 
 	h.logger.Info("tracking image",
 		"image", imageWithTag,
 		"ttl", ttl.String(),
 		"expires_at", expiresAt.Format(time.RFC3339),
-		"size_bytes", sizeBytes,
-		"size_mb", fmt.Sprintf("%.2f", sizeMB),
 		"digest", digest,
 	)
 
-	if err := h.redis.TrackImage(ctx, imageWithTag, expiresAt, sizeBytes, digest); err != nil {
+	if err := h.redis.TrackImage(ctx, imageWithTag, expiresAt, 0, digest); err != nil {
 		return err
 	}
-
 	metrics.ImagesTracked.Inc()
-	metrics.TrackedBytesTotal.Add(float64(sizeBytes))
-	metrics.ImageSizeBytes.Observe(float64(sizeBytes))
 
+	h.sizeFills.Go(func() { h.fillSize(imageWithTag, repo, cmp.Or(digest, tag), digest) })
 	return nil
+}
+
+// fillSize fetches the image size and stores it if the tag still points to digest.
+func (h *Handler) fillSize(imageWithTag, repo, ref, digest string) {
+	ctx, cancel := context.WithTimeout(context.Background(), sizeFetchTimeout)
+	defer cancel()
+
+	// The registry sends the event before it links the tag, so ref prefers the digest.
+	info, err := h.registry.GetImageManifestInfo(ctx, repo, ref)
+	if err != nil {
+		h.logger.Warn("failed to fetch manifest info", "image", imageWithTag, "digest", digest, "error", err)
+		metrics.DigestFetchErrors.Inc()
+		return
+	}
+
+	if err := h.redis.SetImageSize(ctx, imageWithTag, digest, info.SizeBytes); err != nil {
+		h.logger.Warn("failed to store image size", "image", imageWithTag, "error", err)
+		return
+	}
+
+	h.logger.Info("image size tracked",
+		"image", imageWithTag,
+		"size_bytes", info.SizeBytes,
+		"size_mb", fmt.Sprintf("%.2f", float64(info.SizeBytes)/(1024*1024)),
+	)
+	metrics.TrackedBytesTotal.Add(float64(info.SizeBytes))
+	metrics.ImageSizeBytes.Observe(float64(info.SizeBytes))
+}
+
+// Wait blocks until pending background size fetches finish.
+func (h *Handler) Wait() {
+	h.sizeFills.Wait()
 }
 
 // detectOverwrite logs and counts pushes that change the digest of a tracked tag.

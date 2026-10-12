@@ -168,7 +168,9 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("listening on internal port %d: %w", cfg.InternalPort, err)
 			}
 
-			return runServers(ctx, logger, srv, internalSrv, ln, internalLn)
+			err = runServers(ctx, logger, srv, internalSrv, ln, internalLn)
+			hookHandler.Wait()
+			return err
 		},
 	}
 }

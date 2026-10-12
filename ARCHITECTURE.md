@@ -103,9 +103,9 @@ Content-Type: application/json
 4. **Parse TTL**: Extract duration from tag using regex pattern
 5. **Clamp TTL**: Apply `DEFAULT_TTL` (if unparseable) and `MAX_TTL` (if too large)
 6. **Calculate expiry**: `expiresAt = time.Now() + ttl`
-7. **Fetch image size**: GET manifest by the event digest to calculate total size (best effort). The registry sends the event before it links the tag, so a GET by tag can return 404.
-8. **Track image**: Store in Redis with expiry timestamp and size
-9. **Update metrics**: Increment tracked counters, observe size distribution
+7. **Detect overwrite**: Compare the event digest with the stored digest (log + metrics only)
+8. **Track image**: Store in Redis with expiry timestamp, event digest and size 0, then respond. The registry notification timeout is 1s.
+9. **Fill size (background)**: GET manifest by the event digest (for an index, every child), with a 30s timeout. Store the size only if the tag still has the same digest. The registry sends the event before it links the tag, so a GET by tag can return 404.
 
 #### TTL Parsing (`internal/hooks/ttl.go`)
 
