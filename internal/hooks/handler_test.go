@@ -51,15 +51,6 @@ func TestHandler_Auth(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("rejects wrong method", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/hook/registry-event", nil)
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusMethodNotAllowed {
-			t.Errorf("expected 405, got %d", rr.Code)
-		}
-	})
 }
 
 func TestHandler_EventParsing(t *testing.T) {
@@ -167,8 +158,6 @@ func (m *mockStore) GetCreatedTimestamp(_ context.Context, imageWithTag string) 
 	return m.created[imageWithTag], nil
 }
 
-func (m *mockStore) Ping(context.Context) error                                     { return nil }
-func (m *mockStore) Close() error                                                   { return nil }
 func (m *mockStore) ListImages(context.Context) ([]string, error)                   { return nil, nil }
 func (m *mockStore) GetExpiry(context.Context, string) (int64, error)               { return 0, nil }
 func (m *mockStore) GetImageSize(context.Context, string) (int64, error)            { return 0, nil }

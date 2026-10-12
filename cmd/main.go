@@ -61,14 +61,13 @@ func newConfig(logger *slog.Logger) *config.Config {
 		DefaultTTL:             envDuration(logger, "DEFAULT_TTL", time.Hour),
 		MaxTTL:                 envDuration(logger, "MAX_TTL", 24*time.Hour),
 		ReapInterval:           envDuration(logger, "REAP_INTERVAL", time.Minute),
-		LogFormat:              envStr("LOG_FORMAT", "json"),
 		HealthFailureThreshold: envInt(logger, "HEALTH_FAILURE_THRESHOLD", 3),
 	}
 }
 
-func setupLogger(format string) *slog.Logger {
+func setupLogger() *slog.Logger {
 	var handler slog.Handler
-	if format == "text" {
+	if envStr("LOG_FORMAT", "json") == "text" {
 		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
 	} else {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -76,20 +75,28 @@ func setupLogger(format string) *slog.Logger {
 	return slog.New(handler)
 }
 
+// bootstrap sets up the logger, the validated config and the Redis client shared by serve, reap and recover.
+func bootstrap() (*slog.Logger, *config.Config, *redisclient.Client, error) {
+	logger := setupLogger()
+	cfg := newConfig(logger)
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, nil, err
+	}
+	rdb, err := redisclient.New(cfg.RedisURL)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("connecting to redis: %w", err)
+	}
+	return logger, cfg, rdb, nil
+}
+
 func serveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
 		Short: "Start the webhook server, reaper loop, and landing page",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := setupLogger(envStr("LOG_FORMAT", "json"))
-			cfg := newConfig(logger)
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
-			rdb, err := redisclient.New(cfg.RedisURL)
+			logger, cfg, rdb, err := bootstrap()
 			if err != nil {
-				return fmt.Errorf("connecting to redis: %w", err)
+				return err
 			}
 			defer func() { _ = rdb.Close() }()
 
@@ -110,7 +117,7 @@ func serveCmd() *cobra.Command {
 
 			// Start reaper in background.
 			healthChecker := health.New(cfg.HealthFailureThreshold, logger.With("component", "health"))
-			r := reaper.New(rdb, cfg.RegistryURL, logger.With("component", "reaper"), reaper.WithHealthReporter(healthChecker))
+			r := reaper.New(rdb, reg, logger.With("component", "reaper"), healthChecker)
 			go r.RunLoop(ctx, cfg.ReapInterval)
 
 			// Set up public HTTP routes (webhook + landing page).
@@ -122,7 +129,7 @@ func serveCmd() *cobra.Command {
 			)
 			mux.Handle("POST /v1/hook/registry-event", hookHandler)
 
-			webHandler, err := web.NewHandler(cfg.Hostname, cfg.DefaultTTL, cfg.MaxTTL, version, logger.With("component", "web"))
+			webHandler, err := web.NewHandler(cfg.Hostname, cfg.DefaultTTL, cfg.MaxTTL, version)
 			if err != nil {
 				return fmt.Errorf("creating web handler: %w", err)
 			}
@@ -220,9 +227,9 @@ func proxyCmd() *cobra.Command {
 		Use:   "proxy",
 		Short: "Start the registry proxy that enforces tag immutability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := setupLogger(envStr("LOG_FORMAT", "json"))
+			logger := setupLogger()
 
-			patterns := envStrSlice("IMMUTABLE_TAG_PATTERNS", nil)
+			patterns := envStrSlice("IMMUTABLE_TAG_PATTERNS")
 			if err := proxy.ValidatePatterns(patterns); err != nil {
 				return err
 			}
@@ -272,21 +279,14 @@ func reapCmd() *cobra.Command {
 		Use:   "reap",
 		Short: "Run a single reap cycle (for CronJob or debugging)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := setupLogger(envStr("LOG_FORMAT", "json"))
-			cfg := newConfig(logger)
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
-			rdb, err := redisclient.New(cfg.RedisURL)
+			logger, cfg, rdb, err := bootstrap()
 			if err != nil {
-				return fmt.Errorf("connecting to redis: %w", err)
+				return err
 			}
 			defer func() { _ = rdb.Close() }()
 
-			ctx := context.Background()
-			r := reaper.New(rdb, cfg.RegistryURL, logger.With("component", "reaper"))
-			return r.ReapOnce(ctx)
+			r := reaper.New(rdb, registry.New(cfg.RegistryURL), logger.With("component", "reaper"), nil)
+			return r.ReapOnce(context.Background())
 		},
 	}
 }
@@ -296,15 +296,9 @@ func recoverCmd() *cobra.Command {
 		Use:   "recover",
 		Short: "Re-populate Redis by scanning the registry catalog",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := setupLogger(envStr("LOG_FORMAT", "json"))
-			cfg := newConfig(logger)
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
-			rdb, err := redisclient.New(cfg.RedisURL)
+			logger, cfg, rdb, err := bootstrap()
 			if err != nil {
-				return fmt.Errorf("connecting to redis: %w", err)
+				return err
 			}
 			defer func() { _ = rdb.Close() }()
 
@@ -366,13 +360,9 @@ func envDuration(logger *slog.Logger, key string, fallback time.Duration) time.D
 	return d
 }
 
-func envStrSlice(key string, fallback []string) []string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
+func envStrSlice(key string) []string {
 	var result []string
-	for s := range strings.SplitSeq(v, ",") {
+	for s := range strings.SplitSeq(os.Getenv(key), ",") {
 		trimmed := strings.TrimSpace(s)
 		if trimmed != "" {
 			result = append(result, trimmed)

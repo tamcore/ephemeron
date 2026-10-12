@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -27,12 +28,9 @@ func New(registryURL string) *Client {
 	}
 }
 
-type catalogResponse struct {
+type listResponse struct {
 	Repositories []string `json:"repositories"`
-}
-
-type tagsResponse struct {
-	Tags []string `json:"tags"`
+	Tags         []string `json:"tags"`
 }
 
 // ManifestAccept lists the manifest media types the registry stores.
@@ -45,15 +43,16 @@ var ManifestAccept = strings.Join([]string{
 
 // ManifestV2 represents an OCI/Docker image manifest, index or manifest list.
 type ManifestV2 struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	Config        ManifestConfig       `json:"config"`
-	Layers        []ManifestLayer      `json:"layers"`
-	Manifests     []ManifestDescriptor `json:"manifests"`
+	SchemaVersion int          `json:"schemaVersion"`
+	Config        Descriptor   `json:"config"`
+	Layers        []Descriptor `json:"layers"`
+	Manifests     []Descriptor `json:"manifests"`
 }
 
-// ManifestDescriptor references a child manifest of an index.
-type ManifestDescriptor struct {
+// Descriptor references content by digest and size.
+type Descriptor struct {
 	Digest string `json:"digest"`
+	Size   int64  `json:"size"`
 }
 
 func (m ManifestV2) imageSize() int64 {
@@ -64,16 +63,6 @@ func (m ManifestV2) imageSize() int64 {
 	return size
 }
 
-// ManifestConfig contains the image configuration descriptor.
-type ManifestConfig struct {
-	Size int64 `json:"size"`
-}
-
-// ManifestLayer represents a single layer in the image.
-type ManifestLayer struct {
-	Size int64 `json:"size"`
-}
-
 // ManifestInfo contains metadata about an image manifest.
 type ManifestInfo struct {
 	Digest    string
@@ -82,79 +71,47 @@ type ManifestInfo struct {
 
 // ListRepositories returns all repository names from the registry catalog.
 func (c *Client) ListRepositories(ctx context.Context) ([]string, error) {
-	var all []string
-	url := fmt.Sprintf("%s/v2/_catalog?n=1000", c.baseURL)
-
-	for page := 0; url != ""; page++ {
-		if page >= maxPages {
-			return nil, fmt.Errorf("catalog pagination exceeded %d pages", maxPages)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating catalog request: %w", err)
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("listing catalog: %w", err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("catalog request failed: status %d", resp.StatusCode)
-		}
-
-		var catalog catalogResponse
-		err = json.NewDecoder(resp.Body).Decode(&catalog)
-		_ = resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("decoding catalog response: %w", err)
-		}
-
-		all = append(all, catalog.Repositories...)
-		url = nextLink(resp, c.baseURL)
-	}
-
-	return all, nil
+	return c.listPaged(ctx, c.baseURL+"/v2/_catalog?n=1000", "repositories")
 }
 
 // ListTags returns all tags for a given repository.
 func (c *Client) ListTags(ctx context.Context, repo string) ([]string, error) {
-	var all []string
-	url := fmt.Sprintf("%s/v2/%s/tags/list?n=1000", c.baseURL, repo)
+	return c.listPaged(ctx, fmt.Sprintf("%s/v2/%s/tags/list?n=1000", c.baseURL, repo), "tags")
+}
 
-	for page := 0; url != ""; page++ {
+func (c *Client) listPaged(ctx context.Context, next, field string) ([]string, error) {
+	var all []string
+	for page := 0; next != ""; page++ {
 		if page >= maxPages {
-			return nil, fmt.Errorf("tags pagination for %s exceeded %d pages", repo, maxPages)
+			return nil, fmt.Errorf("pagination of %s exceeded %d pages", field, maxPages)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, next, nil)
 		if err != nil {
-			return nil, fmt.Errorf("creating tags request: %w", err)
+			return nil, fmt.Errorf("creating %s request: %w", field, err)
 		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("listing tags for %s: %w", repo, err)
+			return nil, fmt.Errorf("listing %s: %w", field, err)
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("tags request for %s failed: status %d", repo, resp.StatusCode)
+			return nil, fmt.Errorf("%s request %s failed: status %d", field, next, resp.StatusCode)
 		}
 
-		var tags tagsResponse
-		err = json.NewDecoder(resp.Body).Decode(&tags)
+		var body listResponse
+		err = json.NewDecoder(resp.Body).Decode(&body)
 		_ = resp.Body.Close()
 		if err != nil {
-			return nil, fmt.Errorf("decoding tags response: %w", err)
+			return nil, fmt.Errorf("decoding %s response: %w", field, err)
 		}
 
-		all = append(all, tags.Tags...)
-		url = nextLink(resp, c.baseURL)
+		all = append(all, body.Repositories...)
+		all = append(all, body.Tags...)
+		next = c.nextLink(resp)
 	}
-
 	return all, nil
 }
 
@@ -180,17 +137,9 @@ func (c *Client) GetImageManifestInfo(ctx context.Context, repo, ref string) (*M
 
 func (c *Client) getManifest(ctx context.Context, repo, ref string) (ManifestV2, string, error) {
 	var manifest ManifestV2
-	url := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL, repo, ref)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := c.manifestRequest(ctx, http.MethodGet, repo, ref)
 	if err != nil {
-		return manifest, "", fmt.Errorf("creating manifest request: %w", err)
-	}
-	req.Header.Set("Accept", ManifestAccept)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return manifest, "", fmt.Errorf("fetching manifest for %s:%s: %w", repo, ref, err)
+		return manifest, "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -198,35 +147,83 @@ func (c *Client) getManifest(ctx context.Context, repo, ref string) (ManifestV2,
 		return manifest, "", fmt.Errorf("manifest request failed for %s:%s: status %d", repo, ref, resp.StatusCode)
 	}
 
-	digest := resp.Header.Get("Docker-Content-Digest")
-	if digest == "" {
-		digest = strings.Trim(resp.Header.Get("ETag"), `"`)
-	}
-
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
 		return manifest, "", fmt.Errorf("decoding manifest for %s:%s: %w", repo, ref, err)
 	}
-	return manifest, digest, nil
+	return manifest, digestOf(resp), nil
 }
 
-// nextLink parses the Link header for pagination.
-// The registry returns: Link: </v2/_catalog?n=1000&last=repo>; rel="next"
-func nextLink(resp *http.Response, baseURL string) string {
+// DeleteManifest deletes the manifest that tag points to. A missing manifest is not an error.
+func (c *Client) DeleteManifest(ctx context.Context, repo, tag string) error {
+	head, err := c.manifestRequest(ctx, http.MethodHead, repo, tag)
+	if err != nil {
+		return err
+	}
+	_ = head.Body.Close()
+
+	switch head.StatusCode {
+	case http.StatusNotFound:
+		return nil
+	case http.StatusOK:
+	default:
+		return fmt.Errorf("HEAD manifest returned %d", head.StatusCode)
+	}
+
+	digest := digestOf(head)
+	if digest == "" {
+		return fmt.Errorf("no digest found for %s:%s", repo, tag)
+	}
+
+	del, err := c.manifestRequest(ctx, http.MethodDelete, repo, digest)
+	if err != nil {
+		return err
+	}
+	_ = del.Body.Close()
+
+	switch del.StatusCode {
+	case http.StatusOK, http.StatusAccepted, http.StatusNotFound:
+		return nil
+	default:
+		return fmt.Errorf("DELETE manifest returned %d", del.StatusCode)
+	}
+}
+
+func (c *Client) manifestRequest(ctx context.Context, method, repo, ref string) (*http.Response, error) {
+	u := fmt.Sprintf("%s/v2/%s/manifests/%s", c.baseURL, repo, ref)
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating %s manifest request: %w", method, err)
+	}
+	req.Header.Set("Accept", ManifestAccept)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s manifest %s:%s: %w", method, repo, ref, err)
+	}
+	return resp, nil
+}
+
+func digestOf(resp *http.Response) string {
+	if d := resp.Header.Get("Docker-Content-Digest"); d != "" {
+		return d
+	}
+	return strings.Trim(resp.Header.Get("ETag"), `"`)
+}
+
+// nextLink resolves the pagination Link header, e.g. </v2/_catalog?n=1000&last=repo>; rel="next".
+func (c *Client) nextLink(resp *http.Response) string {
 	link := resp.Header.Get("Link")
-	if link == "" {
+	start, end := strings.Index(link, "<"), strings.Index(link, ">")
+	if start < 0 || end <= start {
 		return ""
 	}
-
-	// Parse format: </path>; rel="next"
-	start := strings.Index(link, "<")
-	end := strings.Index(link, ">")
-	if start < 0 || end < 0 || end <= start {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
 		return ""
 	}
-
-	path := link[start+1 : end]
-	if strings.HasPrefix(path, "/") {
-		return baseURL + path
+	ref, err := url.Parse(link[start+1 : end])
+	if err != nil {
+		return ""
 	}
-	return path
+	return base.ResolveReference(ref).String()
 }

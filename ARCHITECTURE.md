@@ -166,8 +166,8 @@ Periodically scans tracked images and deletes expired ones from the registry.
 #### Image Deletion Process
 
 1. **Parse image**: Split `repo:tag` format
-2. **Get manifest digest**:
-   - `HEAD /v2/{repo}/manifests/{tag}`
+2. **Get manifest digest** (`registry.Client.DeleteManifest`):
+   - `HEAD /v2/{repo}/manifests/{tag}` with the OCI and Docker manifest media types in `Accept`
    - Extract `Docker-Content-Digest` header (or fall back to `ETag`)
 3. **Delete manifest by digest**:
    - `DELETE /v2/{repo}/manifests/{digest}`
@@ -233,9 +233,6 @@ Defines all Redis operations needed by the system:
 
 ```go
 type Store interface {
-    Ping(ctx) error
-    Close() error
-
     // Image tracking
     TrackImage(ctx, imageWithTag, expiresAt, sizeBytes) error
     ListImages(ctx) ([]string, error)
@@ -373,16 +370,16 @@ Prometheus metrics exposed at `GET /metrics` (internal port):
 #### Counters
 - `ephemeron_hooks_webhook_events_total{action}` - Total webhook events received
 - `ephemeron_hooks_images_tracked_total` - Total images added to tracking
-- `ephemeron_hooks_image_size_fetch_errors_total` - Total size fetch failures
+- `ephemeron_hooks_image_size_fetch_errors_total` - Total manifest fetch failures for image size (webhook and recovery)
 - `ephemeron_reaper_images_reaped_total` - Total images deleted
 - `ephemeron_reaper_cycle_errors_total` - Total failed reaper cycles
 - `ephemeron_storage_bytes_reclaimed_total` - Total storage reclaimed by deletion
 - `ephemeron_immutability_tag_overwrites_total{repository}` - Total tag overwrites detected
-- `ephemeron_immutability_digest_fetch_errors_total` - Total digest fetch failures
+- `ephemeron_immutability_digest_fetch_errors_total` - Total manifest fetch failures when no digest is known (webhook event without digest, recovery)
 - `ephemeron_immutability_immutable_tag_violations_total{repository,tag}` - Overwrites rejected by the `proxy` command
 
 #### Gauges
-- `ephemeron_reaper_tracked_images` - Current number of tracked images
+- `ephemeron_reaper_tracked_images` - Current number of tracked images, set by every replica each reap interval
 - `ephemeron_storage_tracked_bytes_total` - Current total storage tracked
 
 #### Histograms

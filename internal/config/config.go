@@ -34,9 +34,6 @@ type Config struct {
 	// ReapInterval is how often the reaper checks for expired images.
 	ReapInterval time.Duration
 
-	// LogFormat controls log output: "json" or "text".
-	LogFormat string
-
 	// HealthFailureThreshold is the number of consecutive all-failed reap cycles
 	// before the liveness probe reports unhealthy.
 	HealthFailureThreshold int

@@ -7,8 +7,6 @@ import (
 
 // Store defines the interface for image TTL tracking operations.
 type Store interface {
-	Ping(ctx context.Context) error
-	Close() error
 	TrackImage(ctx context.Context, imageWithTag string, expiresAt time.Time, sizeBytes int64, digest string) error
 	ListImages(ctx context.Context) ([]string, error)
 	GetExpiry(ctx context.Context, imageWithTag string) (int64, error)

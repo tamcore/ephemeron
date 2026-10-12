@@ -16,7 +16,6 @@ func TestValidate(t *testing.T) {
 			DefaultTTL:             time.Hour,
 			MaxTTL:                 24 * time.Hour,
 			ReapInterval:           time.Minute,
-			LogFormat:              "text",
 			HealthFailureThreshold: 3,
 		}
 	}

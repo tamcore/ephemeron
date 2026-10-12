@@ -75,11 +75,6 @@ func NewHandler(
 
 // ServeHTTP handles POST /v1/hook/registry-event.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	auth := r.Header.Get("Authorization")
 	expected := "Token " + h.hookToken
 	if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
@@ -160,7 +155,10 @@ func (h *Handler) fillSize(imageWithTag, repo, ref, digest string) {
 	info, err := h.registry.GetImageManifestInfo(ctx, repo, ref)
 	if err != nil {
 		h.logger.Warn("failed to fetch manifest info", "image", imageWithTag, "digest", digest, "error", err)
-		metrics.DigestFetchErrors.Inc()
+		metrics.ImageSizeFetchErrors.Inc()
+		if digest == "" {
+			metrics.DigestFetchErrors.Inc()
+		}
 		return
 	}
 
@@ -169,11 +167,7 @@ func (h *Handler) fillSize(imageWithTag, repo, ref, digest string) {
 		return
 	}
 
-	h.logger.Info("image size tracked",
-		"image", imageWithTag,
-		"size_bytes", info.SizeBytes,
-		"size_mb", fmt.Sprintf("%.2f", float64(info.SizeBytes)/(1024*1024)),
-	)
+	h.logger.Info("image size tracked", "image", imageWithTag, "size_bytes", info.SizeBytes)
 	metrics.TrackedBytesTotal.Add(float64(info.SizeBytes))
 	metrics.ImageSizeBytes.Observe(float64(info.SizeBytes))
 }
