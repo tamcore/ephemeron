@@ -19,7 +19,7 @@ func TestListRepositories(t *testing.T) {
 		if r.URL.Path != "/v2/_catalog" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(catalogResponse{
+		_ = json.NewEncoder(w).Encode(listResponse{
 			Repositories: []string{testRepo1, testRepo2},
 		})
 	}))
@@ -44,7 +44,7 @@ func TestListTags(t *testing.T) {
 		if r.URL.Path != "/v2/myapp/tags/list" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(tagsResponse{
+		_ = json.NewEncoder(w).Encode(listResponse{
 			Tags: []string{"1h", "30m", "latest"},
 		})
 	}))
@@ -67,11 +67,11 @@ func TestListRepositories_Pagination(t *testing.T) {
 		callCount++
 		if callCount == 1 {
 			w.Header().Set("Link", `</v2/_catalog?n=1000&last=app1>; rel="next"`)
-			_ = json.NewEncoder(w).Encode(catalogResponse{
+			_ = json.NewEncoder(w).Encode(listResponse{
 				Repositories: []string{testRepo1},
 			})
 		} else {
-			_ = json.NewEncoder(w).Encode(catalogResponse{
+			_ = json.NewEncoder(w).Encode(listResponse{
 				Repositories: []string{testRepo2},
 			})
 		}
@@ -152,7 +152,7 @@ func TestListRepositories_PaginationRunaway(t *testing.T) {
 		callCount++
 		// Always return a next link — simulates a broken registry.
 		w.Header().Set("Link", `</v2/_catalog?n=1000&last=app1>; rel="next"`)
-		_ = json.NewEncoder(w).Encode(catalogResponse{
+		_ = json.NewEncoder(w).Encode(listResponse{
 			Repositories: []string{testRepo1},
 		})
 	}))
@@ -182,8 +182,8 @@ func TestGetImageManifestInfo_Success(t *testing.T) {
 
 		manifest := ManifestV2{
 			SchemaVersion: 2,
-			Config:        ManifestConfig{Size: 2000},
-			Layers: []ManifestLayer{
+			Config:        Descriptor{Size: 2000},
+			Layers: []Descriptor{
 				{Size: 8000},
 				{Size: 15000},
 			},
@@ -216,8 +216,8 @@ func TestGetImageManifestInfo_ETagFallback(t *testing.T) {
 
 		manifest := ManifestV2{
 			SchemaVersion: 2,
-			Config:        ManifestConfig{Size: 500},
-			Layers:        []ManifestLayer{{Size: 1500}},
+			Config:        Descriptor{Size: 500},
+			Layers:        []Descriptor{{Size: 1500}},
 		}
 		_ = json.NewEncoder(w).Encode(manifest)
 	}))
@@ -269,8 +269,8 @@ func TestGetImageManifestInfo_InvalidJSON(t *testing.T) {
 
 func TestGetImageManifestInfo_Index(t *testing.T) {
 	children := map[string]ManifestV2{
-		"sha256:amd64": {Config: ManifestConfig{Size: 100}, Layers: []ManifestLayer{{Size: 1000}}},
-		"sha256:arm64": {Config: ManifestConfig{Size: 200}, Layers: []ManifestLayer{{Size: 2000}, {Size: 3000}}},
+		"sha256:amd64": {Config: Descriptor{Size: 100}, Layers: []Descriptor{{Size: 1000}}},
+		"sha256:arm64": {Config: Descriptor{Size: 200}, Layers: []Descriptor{{Size: 2000}, {Size: 3000}}},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ref := strings.TrimPrefix(r.URL.Path, "/v2/myapp/manifests/")
@@ -278,7 +278,7 @@ func TestGetImageManifestInfo_Index(t *testing.T) {
 			w.Header().Set("Docker-Content-Digest", "sha256:index")
 			_ = json.NewEncoder(w).Encode(ManifestV2{
 				SchemaVersion: 2,
-				Manifests:     []ManifestDescriptor{{Digest: "sha256:amd64"}, {Digest: "sha256:arm64"}},
+				Manifests:     []Descriptor{{Digest: "sha256:amd64"}, {Digest: "sha256:arm64"}},
 			})
 			return
 		}
@@ -307,7 +307,7 @@ func TestGetImageManifestInfo_Index(t *testing.T) {
 func TestGetImageManifestInfo_IndexChildMissing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/multi-1h") {
-			_ = json.NewEncoder(w).Encode(ManifestV2{Manifests: []ManifestDescriptor{{Digest: "sha256:gone"}}})
+			_ = json.NewEncoder(w).Encode(ManifestV2{Manifests: []Descriptor{{Digest: "sha256:gone"}}})
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -316,5 +316,29 @@ func TestGetImageManifestInfo_IndexChildMissing(t *testing.T) {
 
 	if _, err := New(srv.URL).GetImageManifestInfo(context.Background(), "myapp", "multi-1h"); err == nil {
 		t.Fatal("expected error for missing child manifest")
+	}
+}
+
+func TestDeleteManifest_DeletesByDigest(t *testing.T) {
+	var deletedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != ManifestAccept {
+			t.Errorf("unexpected Accept: %s", r.Header.Get("Accept"))
+		}
+		switch r.Method {
+		case http.MethodHead:
+			w.Header().Set("Docker-Content-Digest", "sha256:abc")
+		case http.MethodDelete:
+			deletedPath = r.URL.Path
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer srv.Close()
+
+	if err := New(srv.URL).DeleteManifest(context.Background(), "myapp", "1h"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deletedPath != "/v2/myapp/manifests/sha256:abc" {
+		t.Errorf("unexpected DELETE path: %s", deletedPath)
 	}
 }

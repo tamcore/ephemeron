@@ -49,10 +49,3 @@ func (c *Checker) IsHealthy() bool {
 	defer c.mu.RUnlock()
 	return c.consecutiveFailures < c.threshold
 }
-
-// ConsecutiveFailures returns the current failure count.
-func (c *Checker) ConsecutiveFailures() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.consecutiveFailures
-}

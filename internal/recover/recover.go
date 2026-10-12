@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tamcore/ephemeron/internal/hooks"
+	"github.com/tamcore/ephemeron/internal/metrics"
 	redisclient "github.com/tamcore/ephemeron/internal/redis"
 	"github.com/tamcore/ephemeron/internal/registry"
 )
@@ -61,7 +62,6 @@ func (r *Runner) Run(ctx context.Context) error {
 			expiresAt := time.Now().Add(ttl)
 			imageWithTag := fmt.Sprintf("%s:%s", repo, tag)
 
-			// Fetch manifest info - best effort
 			var sizeBytes int64
 			var digest string
 
@@ -71,8 +71,8 @@ func (r *Runner) Run(ctx context.Context) error {
 					"image", imageWithTag,
 					"error", err,
 				)
-				sizeBytes = 0
-				digest = ""
+				metrics.ImageSizeFetchErrors.Inc()
+				metrics.DigestFetchErrors.Inc()
 			} else {
 				sizeBytes = manifestInfo.SizeBytes
 				digest = manifestInfo.Digest
@@ -94,12 +94,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		}
 	}
 
-	totalMB := float64(totalBytes) / (1024 * 1024)
-	r.logger.Info("recovery complete",
-		"images_recovered", recovered,
-		"total_bytes", totalBytes,
-		"total_mb", fmt.Sprintf("%.2f", totalMB),
-	)
+	r.logger.Info("recovery complete", "images_recovered", recovered, "total_bytes", totalBytes)
 	return nil
 }
 

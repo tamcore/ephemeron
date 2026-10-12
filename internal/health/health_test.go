@@ -11,9 +11,6 @@ func TestNew_StartsHealthy(t *testing.T) {
 	if !c.IsHealthy() {
 		t.Error("new checker should be healthy")
 	}
-	if c.ConsecutiveFailures() != 0 {
-		t.Errorf("expected 0 failures, got %d", c.ConsecutiveFailures())
-	}
 }
 
 func TestReportFailure_TriggersUnhealthy(t *testing.T) {
@@ -33,9 +30,6 @@ func TestReportFailure_TriggersUnhealthy(t *testing.T) {
 	if c.IsHealthy() {
 		t.Error("should be unhealthy after 3 failures (threshold)")
 	}
-	if c.ConsecutiveFailures() != 3 {
-		t.Errorf("expected 3 failures, got %d", c.ConsecutiveFailures())
-	}
 }
 
 func TestReportSuccess_ResetsAfterFailures(t *testing.T) {
@@ -47,9 +41,6 @@ func TestReportSuccess_ResetsAfterFailures(t *testing.T) {
 
 	if !c.IsHealthy() {
 		t.Error("should be healthy after success resets failures")
-	}
-	if c.ConsecutiveFailures() != 0 {
-		t.Errorf("expected 0 failures after reset, got %d", c.ConsecutiveFailures())
 	}
 }
 
@@ -98,7 +89,13 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	if c.ConsecutiveFailures() != 50 {
-		t.Errorf("expected 50 failures after concurrent writes, got %d", c.ConsecutiveFailures())
+	if !c.IsHealthy() {
+		t.Error("expected healthy below threshold after 50 concurrent failures")
+	}
+	for range 50 {
+		c.ReportFailure()
+	}
+	if c.IsHealthy() {
+		t.Error("expected unhealthy after reaching threshold of 100")
 	}
 }

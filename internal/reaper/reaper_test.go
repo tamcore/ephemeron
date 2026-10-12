@@ -7,6 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	dto "github.com/prometheus/client_model/go"
+
+	"github.com/tamcore/ephemeron/internal/metrics"
+	registryclient "github.com/tamcore/ephemeron/internal/registry"
 )
 
 // mockStore is an in-memory implementation of redis.Store for testing.
@@ -26,9 +31,6 @@ func newMockStore() *mockStore {
 		created: make(map[string]int64),
 	}
 }
-
-func (m *mockStore) Ping(context.Context) error { return nil }
-func (m *mockStore) Close() error               { return nil }
 
 func (m *mockStore) TrackImage(
 	_ context.Context,
@@ -100,7 +102,7 @@ func TestDeleteImage_404FromRegistry(t *testing.T) {
 	store := newMockStore()
 	store.images["myimage:1h"] = time.Now().Add(-time.Hour).UnixMilli()
 
-	r := New(store, registry.URL, slog.Default())
+	r := New(store, registryclient.New(registry.URL), slog.Default(), nil)
 	err := r.deleteImage(t.Context(), "myimage:1h")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -128,7 +130,7 @@ func TestDeleteImage_SuccessfulDelete(t *testing.T) {
 	store := newMockStore()
 	store.images["myimage:1h"] = time.Now().Add(-time.Hour).UnixMilli()
 
-	r := New(store, registry.URL, slog.Default())
+	r := New(store, registryclient.New(registry.URL), slog.Default(), nil)
 	err := r.deleteImage(t.Context(), "myimage:1h")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -143,7 +145,7 @@ func TestDeleteImage_SuccessfulDelete(t *testing.T) {
 
 func TestDeleteImage_InvalidFormat(t *testing.T) {
 	store := newMockStore()
-	r := New(store, "http://localhost", slog.Default())
+	r := New(store, registryclient.New("http://localhost"), slog.Default(), nil)
 	err := r.deleteImage(t.Context(), "no-colon-here")
 	if err == nil {
 		t.Error("expected error for invalid image format")
@@ -169,7 +171,7 @@ func TestReapOnce_ExpiredImage(t *testing.T) {
 	// Image expired 1 minute ago.
 	store.images["myapp:5m"] = time.Now().Add(-time.Minute).UnixMilli()
 
-	r := New(store, registry.URL, slog.Default())
+	r := New(store, registryclient.New(registry.URL), slog.Default(), nil)
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +193,7 @@ func TestReapOnce_NotExpired(t *testing.T) {
 	// Image expires in 1 hour.
 	store.images["myapp:1h"] = time.Now().Add(time.Hour).UnixMilli()
 
-	r := New(store, registry.URL, slog.Default())
+	r := New(store, registryclient.New(registry.URL), slog.Default(), nil)
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -220,7 +222,7 @@ func TestReapOnce_AllDeletesFail_ReportsFailure(t *testing.T) {
 	store.images["img2:1h"] = time.Now().Add(-time.Minute).UnixMilli()
 
 	hr := &mockHealthReporter{}
-	r := New(store, reg.URL, slog.Default(), WithHealthReporter(hr))
+	r := New(store, registryclient.New(reg.URL), slog.Default(), hr)
 
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -249,7 +251,7 @@ func TestReapOnce_AllDeletesSucceed_ReportsSuccess(t *testing.T) {
 	store.images["img1:1h"] = time.Now().Add(-time.Minute).UnixMilli()
 
 	hr := &mockHealthReporter{}
-	r := New(store, reg.URL, slog.Default(), WithHealthReporter(hr))
+	r := New(store, registryclient.New(reg.URL), slog.Default(), hr)
 
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -272,7 +274,7 @@ func TestReapOnce_NoExpiredImages_NoHealthReport(t *testing.T) {
 	store.images["img1:1h"] = time.Now().Add(time.Hour).UnixMilli()
 
 	hr := &mockHealthReporter{}
-	r := New(store, reg.URL, slog.Default(), WithHealthReporter(hr))
+	r := New(store, registryclient.New(reg.URL), slog.Default(), hr)
 
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -307,7 +309,7 @@ func TestReapOnce_PartialFailure_ReportsSuccess(t *testing.T) {
 	store.images["zzz:1h"] = time.Now().Add(-time.Minute).UnixMilli()
 
 	hr := &mockHealthReporter{}
-	r := New(store, reg.URL, slog.Default(), WithHealthReporter(hr))
+	r := New(store, registryclient.New(reg.URL), slog.Default(), hr)
 
 	if err := r.ReapOnce(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -317,5 +319,23 @@ func TestReapOnce_PartialFailure_ReportsSuccess(t *testing.T) {
 	}
 	if hr.failures != 0 {
 		t.Errorf("expected 0 failure reports for partial failure, got %d", hr.failures)
+	}
+}
+
+func TestReapOnce_SetsTrackedImagesGauge(t *testing.T) {
+	store := newMockStore()
+	store.images["a:1h"] = time.Now().Add(time.Hour).UnixMilli()
+	store.images["b:1h"] = time.Now().Add(time.Hour).UnixMilli()
+
+	r := New(store, registryclient.New("http://localhost"), slog.Default(), nil)
+	if err := r.ReapOnce(t.Context()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var m dto.Metric
+	if err := metrics.TrackedImagesGauge.Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.GetGauge().GetValue(); got != 2 {
+		t.Errorf("expected gauge 2, got %v", got)
 	}
 }

@@ -26,9 +26,6 @@ func newMockStore() *mockStore {
 	}
 }
 
-func (m *mockStore) Ping(_ context.Context) error { return nil }
-func (m *mockStore) Close() error                 { return nil }
-
 func (m *mockStore) TrackImage(
 	_ context.Context,
 	imageWithTag string,
