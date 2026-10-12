@@ -87,6 +87,19 @@ func (c *Client) GetImageSize(ctx context.Context, imageWithTag string) (int64, 
 	return strconv.ParseInt(val, 10, 64)
 }
 
+var setSizeIfDigest = redis.NewScript(`
+if redis.call("HGET", KEYS[1], "digest") == ARGV[1] then
+	return redis.call("HSET", KEYS[1], "size_bytes", ARGV[2])
+end
+return 0
+`)
+
+// SetImageSize stores the size only while the image is tracked with the given digest,
+// so a late result cannot overwrite a newer push or recreate a reaped image.
+func (c *Client) SetImageSize(ctx context.Context, imageWithTag, digest string, sizeBytes int64) error {
+	return setSizeIfDigest.Run(ctx, c.rdb, []string{imageWithTag}, digest, sizeBytes).Err()
+}
+
 // GetImageDigest returns the stored digest for an image.
 // Returns empty string for missing field (backward compatibility).
 func (c *Client) GetImageDigest(ctx context.Context, imageWithTag string) (string, error) {

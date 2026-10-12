@@ -60,6 +60,10 @@ func (m *mockStore) GetImageSize(_ context.Context, imageWithTag string) (int64,
 	return m.sizes[imageWithTag], nil
 }
 
+func (m *mockStore) SetImageSize(context.Context, string, string, int64) error {
+	return nil
+}
+
 func (m *mockStore) GetImageDigest(_ context.Context, imageWithTag string) (string, error) {
 	return m.digests[imageWithTag], nil
 }
