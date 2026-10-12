@@ -354,3 +354,51 @@ func TestDetectOverwrite_DifferentDigest(t *testing.T) {
 		t.Fatalf("expected new digest to be stored, got %s", store.digests[testAppTTL])
 	}
 }
+
+func TestHandler_UsesEventDigest(t *testing.T) {
+	const eventDigest = "sha256:fromevent"
+	tests := []struct {
+		name     string
+		registry *mockRegistry
+		wantSize int64
+	}{
+		{
+			name: "fetches manifest by digest",
+			registry: &mockRegistry{
+				sizes:   map[string]int64{testApp + ":" + eventDigest: 4242},
+				digests: map[string]string{testApp + ":" + eventDigest: eventDigest},
+			},
+			wantSize: 4242,
+		},
+		{
+			name:     "keeps event digest when fetch fails",
+			registry: &mockRegistry{err: http.ErrHandlerTimeout},
+			wantSize: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newMockStore()
+			handler := NewHandler(store, tt.registry, "tok", time.Hour, 24*time.Hour, slog.Default())
+
+			body, _ := json.Marshal(EventEnvelope{Events: []RegistryEvent{
+				{Action: testPush, Target: EventTarget{Repository: testApp, Tag: "1h", Digest: eventDigest}},
+			}})
+			req := httptest.NewRequest(http.MethodPost, "/v1/hook/registry-event", bytes.NewReader(body))
+			req.Header.Set("Authorization", "Token tok")
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d", rr.Code)
+			}
+			if store.digests[testAppTTL] != eventDigest {
+				t.Fatalf("digest = %q, want %q", store.digests[testAppTTL], eventDigest)
+			}
+			if store.sizes[testAppTTL] != tt.wantSize {
+				t.Fatalf("size = %d, want %d", store.sizes[testAppTTL], tt.wantSize)
+			}
+		})
+	}
+}
