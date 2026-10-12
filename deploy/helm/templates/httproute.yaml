@@ -37,9 +37,10 @@ spec:
     - {{ $host | quote }}
   {{- end }}
   rules:
+    # Only the landing page is public; the webhook stays in-cluster.
     - matches:
         - path:
-            type: PathPrefix
+            type: Exact
             value: /
       backendRefs:
         - name: {{ include "ephemeron.manager.fullname" . }}
