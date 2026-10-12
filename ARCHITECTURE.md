@@ -87,7 +87,8 @@ Content-Type: application/json
       "action": "push",
       "target": {
         "repository": "myapp",
-        "tag": "1h30m"
+        "tag": "1h30m",
+        "digest": "sha256:..."
       }
     }
   ]
@@ -102,7 +103,7 @@ Content-Type: application/json
 4. **Parse TTL**: Extract duration from tag using regex pattern
 5. **Clamp TTL**: Apply `DEFAULT_TTL` (if unparseable) and `MAX_TTL` (if too large)
 6. **Calculate expiry**: `expiresAt = time.Now() + ttl`
-7. **Fetch image size**: GET manifest from registry to calculate total size (best effort)
+7. **Fetch image size**: GET manifest by the event digest to calculate total size (best effort). The registry sends the event before it links the tag, so a GET by tag can return 404.
 8. **Track image**: Store in Redis with expiry timestamp and size
 9. **Update metrics**: Increment tracked counters, observe size distribution
 

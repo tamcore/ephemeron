@@ -8,8 +8,10 @@ metadata:
     {{- include "ephemeron.registry.labels" . | nindent 4 }}
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    {{- if not .Values.manager.env.immutableTagPatterns }}
     nginx.ingress.kubernetes.io/server-snippet: |
       location ~* ^/v2/_catalog { return 403; }
+    {{- end }}
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

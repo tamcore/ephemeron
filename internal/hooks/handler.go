@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"cmp"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -22,10 +23,11 @@ type RegistryEvent struct {
 	Target EventTarget `json:"target"`
 }
 
-// EventTarget contains the repository and tag from a registry event.
+// EventTarget contains the repository, tag and manifest digest from a registry event.
 type EventTarget struct {
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
+	Digest     string `json:"digest"`
 }
 
 // EventEnvelope is the top-level structure sent by the Docker Registry.
@@ -100,7 +102,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if event.Target.Repository == "" || event.Target.Tag == "" {
 			continue
 		}
-		if err := h.handlePush(ctx, event.Target.Repository, event.Target.Tag); err != nil {
+		if err := h.handlePush(ctx, event.Target); err != nil {
 			h.logger.Error("failed to handle push event",
 				"image", event.Target.Repository,
 				"tag", event.Target.Tag,
@@ -115,29 +117,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("{}"))
 }
 
-func (h *Handler) handlePush(ctx context.Context, repo, tag string) error {
+func (h *Handler) handlePush(ctx context.Context, target EventTarget) error {
+	repo, tag := target.Repository, target.Tag
 	imageWithTag := fmt.Sprintf("%s:%s", repo, tag)
 
 	ttl := ClampTTL(ParseTTL(tag), h.defaultTTL, h.maxTTL)
 	expiresAt := time.Now().Add(ttl)
 
 	// Fetch manifest info (digest + size) - best effort
-	var manifestInfo *registry.ManifestInfo
 	var sizeBytes int64
-	var digest string
+	digest := target.Digest
 
-	manifestInfo, err := h.registry.GetImageManifestInfo(ctx, repo, tag)
+	// The registry sends the event before it links the tag, so prefer the digest.
+	manifestInfo, err := h.registry.GetImageManifestInfo(ctx, repo, cmp.Or(target.Digest, tag))
 	if err != nil {
-		h.logger.Warn("failed to fetch manifest info, tracking without digest",
+		h.logger.Warn("failed to fetch manifest info",
 			"image", imageWithTag,
+			"digest", digest,
 			"error", err,
 		)
-		sizeBytes = 0
-		digest = ""
 		metrics.DigestFetchErrors.Inc()
 	} else {
 		sizeBytes = manifestInfo.SizeBytes
-		digest = manifestInfo.Digest
+		digest = cmp.Or(digest, manifestInfo.Digest)
 	}
 
 	if digest != "" {
