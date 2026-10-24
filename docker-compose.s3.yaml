@@ -2,7 +2,7 @@ name: ephemeron-s3
 
 services:
   minio:
-    image: cgr.dev/chainguard/minio:latest@sha256:626f73abb00da35765ae77b3dfcd221375b286e956a6bf4e0969a9c16cb5fc1f
+    image: cgr.dev/chainguard/minio:latest@sha256:73297936408b731668ca0e835ac9add1a35cb6026a125c2f0cd476d9ef48222c
     command: ["server", "/data"]
     # Default credentials are fine here: this stack is local/CI-only.
     environment:
