@@ -8,5 +8,5 @@ appVersion: latest
 
 dependencies:
   - name: redis-ha
-    version: 6.5.13
+    version: 6.5.15
     repository: oci://ghcr.io/tamcore/charts
